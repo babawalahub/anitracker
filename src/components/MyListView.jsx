@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   Plus, Minus, Check, Star, Search, Trash2, Edit3, 
-  ExternalLink, Film, BookOpen, Layers, ArrowLeft 
+  Film, BookOpen, Layers, ArrowLeft, ExternalLink 
 } from 'lucide-react';
 import { TRACKING_STATUS, STATUS_LABELS, upsertEntry, deleteEntry } from '../services/storage';
 
@@ -30,22 +30,37 @@ export default function MyListView({
     return true;
   });
 
+  const getMediaPayload = (entry) => ({
+    id: entry.mediaId,
+    mediaId: entry.mediaId,
+    type: entry.type,
+    title: entry.title,
+    coverImage: entry.coverImage,
+    format: entry.format,
+    episodes: entry.maxEpisodes,
+    chapters: entry.maxChapters,
+    maxEpisodes: entry.maxEpisodes,
+    maxChapters: entry.maxChapters,
+    duration: entry.duration,
+    genres: entry.genres,
+    status: entry.status
+  });
+
   const handleIncrement = (entry) => {
     const max = entry.type === 'ANIME' ? entry.maxEpisodes : entry.maxChapters;
-    const nextProgress = (entry.progress || 0) + 1;
+    const currentProg = parseInt(entry.progress, 10) || 0;
+    const nextProgress = currentProg + 1;
     
-    upsertEntry({
-      id: entry.mediaId,
-      type: entry.type,
-      title: entry.title,
-      coverImage: entry.coverImage,
-      format: entry.format,
-      episodes: entry.maxEpisodes,
-      chapters: entry.maxChapters,
-      duration: entry.duration,
-      genres: entry.genres
-    }, {
-      status: (max && nextProgress >= max) ? TRACKING_STATUS.COMPLETED : entry.status,
+    let newStatus = entry.status;
+    if (entry.status === TRACKING_STATUS.PLANNING || entry.status === TRACKING_STATUS.PAUSED) {
+      newStatus = TRACKING_STATUS.CURRENT;
+    }
+    if (max && nextProgress >= max) {
+      newStatus = TRACKING_STATUS.COMPLETED;
+    }
+
+    upsertEntry(getMediaPayload(entry), {
+      status: newStatus,
       progress: max ? Math.min(nextProgress, max) : nextProgress,
       score: entry.score,
       notes: entry.notes
@@ -54,18 +69,61 @@ export default function MyListView({
     if (onUpdated) onUpdated();
   };
 
+  const handleDecrement = (entry) => {
+    const max = entry.type === 'ANIME' ? entry.maxEpisodes : entry.maxChapters;
+    const currentProg = parseInt(entry.progress, 10) || 0;
+    const nextProgress = Math.max(0, currentProg - 1);
+    
+    let newStatus = entry.status;
+    if (entry.status === TRACKING_STATUS.COMPLETED && (!max || nextProgress < max)) {
+      newStatus = TRACKING_STATUS.CURRENT;
+    }
+
+    upsertEntry(getMediaPayload(entry), {
+      status: newStatus,
+      progress: nextProgress,
+      score: entry.score,
+      notes: entry.notes
+    });
+
+    if (onUpdated) onUpdated();
+  };
+
+  const handleProgressInput = (entry, val) => {
+    const max = entry.type === 'ANIME' ? entry.maxEpisodes : entry.maxChapters;
+    const parsed = parseInt(val, 10);
+    const prog = isNaN(parsed) ? 0 : Math.max(0, max ? Math.min(parsed, max) : parsed);
+    
+    let newStatus = entry.status;
+    if (max && prog >= max) {
+      newStatus = TRACKING_STATUS.COMPLETED;
+    } else if (entry.status === TRACKING_STATUS.COMPLETED && max && prog < max) {
+      newStatus = TRACKING_STATUS.CURRENT;
+    }
+
+    upsertEntry(getMediaPayload(entry), {
+      status: newStatus,
+      progress: prog,
+      score: entry.score,
+      notes: entry.notes
+    });
+
+    if (onUpdated) onUpdated();
+  };
+
+  const handleStatusChange = (entry, newStatus) => {
+    upsertEntry(getMediaPayload(entry), {
+      status: newStatus,
+      progress: entry.progress,
+      score: entry.score,
+      notes: entry.notes
+    });
+
+    if (onUpdated) onUpdated();
+  };
+
   const handleScoreChange = (entry, newScore) => {
-    upsertEntry({
-      id: entry.mediaId,
-      type: entry.type,
-      title: entry.title,
-      coverImage: entry.coverImage,
-      format: entry.format,
-      episodes: entry.maxEpisodes,
-      chapters: entry.maxChapters,
-      duration: entry.duration,
-      genres: entry.genres
-    }, {
+    upsertEntry(getMediaPayload(entry), {
       status: entry.status,
       progress: entry.progress,
       score: parseFloat(newScore) || 0,
@@ -73,6 +131,14 @@ export default function MyListView({
     });
 
     if (onUpdated) onUpdated();
+  };
+
+  const handleDelete = (entry) => {
+    const title = entry.title?.english || entry.title?.romaji || 'this item';
+    if (window.confirm(`Remove "${title}" from your list?`)) {
+      deleteEntry(entry.mediaId);
+      if (onUpdated) onUpdated();
+    }
   };
 
   const statusCounts = {
@@ -90,7 +156,7 @@ export default function MyListView({
       {/* Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#151f2e] border border-[#1e293b] p-4 rounded-2xl">
         
-        {/* Left Side: Back button + Status Tabs */}
+        {/* Left: Back button + Status Tabs */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
           {onBackToBrowse && (
             <button
@@ -140,7 +206,7 @@ export default function MyListView({
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Filter list..."
+              placeholder="Search in list..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="bg-[#0b1622] border border-[#1e293b] rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 w-36 sm:w-48"
@@ -158,9 +224,18 @@ export default function MyListView({
           <h3 className="text-lg font-bold text-white">No items found</h3>
           <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1">
             {allEntries.length === 0
-              ? "You haven't tracked any anime or manga yet. Search or browse and click '+ Add to List' to start!"
+              ? "You haven't tracked any anime or manga yet. Click 'Browse' to add your favorite titles!"
               : "No titles match your selected filters."}
           </p>
+          {onBackToBrowse && (
+            <button
+              onClick={onBackToBrowse}
+              className="mt-4 px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs shadow-md transition-all inline-flex items-center gap-1.5"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Browse Catalog</span>
+            </button>
+          )}
         </div>
       ) : (
         <div className="bg-[#151f2e] border border-[#1e293b] rounded-2xl overflow-hidden shadow-xl">
@@ -170,10 +245,11 @@ export default function MyListView({
                 <tr className="bg-[#0b1622] text-[11px] font-extrabold uppercase tracking-wider text-slate-400 border-b border-[#1e293b]">
                   <th className="py-3 px-4 w-12 text-center">#</th>
                   <th className="py-3 px-4">Title</th>
-                  <th className="py-3 px-4 w-32 text-center">Score</th>
+                  <th className="py-3 px-4 w-36 text-center">Status</th>
                   <th className="py-3 px-4 w-44 text-center">Progress</th>
-                  <th className="py-3 px-4 w-32 text-center">Type</th>
-                  <th className="py-3 px-4 w-20 text-center">Action</th>
+                  <th className="py-3 px-4 w-28 text-center">Score</th>
+                  <th className="py-3 px-4 w-24 text-center">Format</th>
+                  <th className="py-3 px-4 w-24 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#1e293b] text-xs">
@@ -181,6 +257,7 @@ export default function MyListView({
                   const title = entry.title?.english || entry.title?.romaji || 'Unknown';
                   const max = entry.type === 'ANIME' ? entry.maxEpisodes : entry.maxChapters;
                   const unit = entry.type === 'ANIME' ? 'ep' : 'ch';
+                  const isMaxReached = Boolean(max && entry.progress >= max);
 
                   return (
                     <tr 
@@ -196,26 +273,21 @@ export default function MyListView({
                       {/* Title & Cover */}
                       <td className="py-3 px-4">
                         <div 
-                          onClick={() => onSelectMedia({ id: entry.mediaId, title: entry.title, coverImage: entry.coverImage, type: entry.type })}
+                          onClick={() => onSelectMedia(getMediaPayload(entry))}
                           className="flex items-center gap-3 cursor-pointer group/title"
                         >
                           <img
                             src={entry.coverImage?.medium || entry.coverImage?.large}
                             alt={title}
-                            className="w-10 h-14 rounded-lg object-cover bg-slate-800 shadow"
+                            className="w-10 h-14 rounded-lg object-cover bg-slate-800 shadow flex-shrink-0"
                           />
-                          <div>
+                          <div className="overflow-hidden">
                             <span className="font-bold text-sm text-slate-100 group-hover/title:text-sky-400 transition-colors line-clamp-1">
                               {title}
                             </span>
                             <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-400">
-                              <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${
-                                entry.status === 'CURRENT' ? 'bg-emerald-500/20 text-emerald-400' :
-                                entry.status === 'COMPLETED' ? 'bg-sky-500/20 text-sky-400' :
-                                entry.status === 'PLANNING' ? 'bg-amber-500/20 text-amber-400' :
-                                'bg-slate-800 text-slate-400'
-                              }`}>
-                                {STATUS_LABELS[entry.status]}
+                              <span className="text-[10px] text-slate-400 font-semibold">
+                                {entry.type}
                               </span>
                               {entry.notes && (
                                 <span className="italic text-slate-500 truncate max-w-xs">"{entry.notes}"</span>
@@ -225,10 +297,80 @@ export default function MyListView({
                         </div>
                       </td>
 
+                      {/* Status Dropdown */}
+                      <td className="py-3 px-4 text-center">
+                        <select
+                          value={entry.status}
+                          onChange={(e) => handleStatusChange(entry, e.target.value)}
+                          className={`text-[11px] font-bold px-2 py-1 rounded-xl border border-[#1e293b] cursor-pointer focus:outline-none transition-colors ${
+                            entry.status === 'CURRENT' ? 'bg-emerald-500/20 text-emerald-300' :
+                            entry.status === 'COMPLETED' ? 'bg-sky-500/20 text-sky-300' :
+                            entry.status === 'PLANNING' ? 'bg-amber-500/20 text-amber-300' :
+                            entry.status === 'PAUSED' ? 'bg-orange-500/20 text-orange-300' :
+                            'bg-rose-500/20 text-rose-300'
+                          }`}
+                        >
+                          {Object.entries(TRACKING_STATUS).map(([key, val]) => (
+                            <option key={key} value={val} className="bg-[#0b1622] text-white">
+                              {STATUS_LABELS[val]}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+
+                      {/* Interactive Progress: [-] [ Input ] [+] */}
+                      <td className="py-3 px-4 text-center">
+                        <div className="inline-flex items-center gap-1.5 bg-[#0b1622] p-1 rounded-xl border border-[#1e293b]">
+                          
+                          {/* Decrement Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleDecrement(entry)}
+                            title="Decrement (-1)"
+                            disabled={entry.progress <= 0}
+                            className={`p-1 rounded-lg transition-all ${
+                              entry.progress <= 0
+                                ? 'opacity-30 cursor-not-allowed text-slate-600'
+                                : 'hover:bg-[#1e293b] text-slate-300 hover:text-white'
+                            }`}
+                          >
+                            <Minus className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Editable Number Input */}
+                          <input
+                            type="number"
+                            min="0"
+                            max={max || 9999}
+                            value={entry.progress || 0}
+                            onChange={(e) => handleProgressInput(entry, e.target.value)}
+                            className="w-12 text-center bg-transparent font-extrabold text-sm text-white focus:outline-none focus:bg-[#151f2e] rounded"
+                          />
+
+                          <span className="text-slate-400 text-xs pr-1">/ {max || '?'}</span>
+
+                          {/* Increment Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleIncrement(entry)}
+                            title="Increment progress (+1)"
+                            disabled={isMaxReached}
+                            className={`p-1 rounded-lg transition-all ${
+                              isMaxReached
+                                ? 'opacity-30 cursor-not-allowed bg-slate-800 text-slate-500'
+                                : 'bg-sky-500 hover:bg-sky-400 text-white shadow-sm hover:scale-105'
+                            }`}
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                          </button>
+
+                        </div>
+                      </td>
+
                       {/* Score Selector */}
                       <td className="py-3 px-4 text-center">
                         <div className="inline-flex items-center gap-1 bg-[#0b1622] px-2 py-1 rounded-xl border border-[#1e293b]">
-                          <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                          <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 flex-shrink-0" />
                           <select
                             value={entry.score || 0}
                             onChange={(e) => handleScoreChange(entry, e.target.value)}
@@ -242,47 +384,31 @@ export default function MyListView({
                         </div>
                       </td>
 
-                      {/* Quick Inline Progress + Button */}
+                      {/* Format Badge */}
                       <td className="py-3 px-4 text-center">
-                        <div className="inline-flex items-center gap-2">
-                          <span className="font-extrabold text-sm text-white">
-                            {entry.progress || 0}
-                          </span>
-                          <span className="text-slate-400">/ {max || '?'} {unit}</span>
-
-                          {/* Quick Increment button */}
-                          <button
-                            type="button"
-                            onClick={() => handleIncrement(entry)}
-                            title="Increment progress (+1)"
-                            disabled={max && entry.progress >= max}
-                            className={`p-1 rounded-lg transition-all ${
-                              max && entry.progress >= max
-                                ? 'opacity-30 cursor-not-allowed bg-slate-800 text-slate-500'
-                                : 'bg-sky-500 hover:bg-sky-400 text-white shadow-sm hover:scale-105'
-                            }`}
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
-
-                      {/* Type & Format */}
-                      <td className="py-3 px-4 text-center">
-                        <span className="text-[11px] font-bold text-slate-400 bg-[#0b1622] px-2.5 py-1 rounded-lg border border-[#1e293b]">
+                        <span className="text-[10px] font-bold text-slate-400 bg-[#0b1622] px-2 py-0.5 rounded-lg border border-[#1e293b]">
                           {entry.format || entry.type}
                         </span>
                       </td>
 
-                      {/* Action */}
+                      {/* Actions: Edit & Delete */}
                       <td className="py-3 px-4 text-center">
-                        <button
-                          onClick={() => onSelectMedia({ id: entry.mediaId, title: entry.title, coverImage: entry.coverImage, type: entry.type })}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-sky-400 hover:bg-[#0b1622] transition-colors"
-                          title="Edit details"
-                        >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => onSelectMedia(getMediaPayload(entry))}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-sky-400 hover:bg-[#0b1622] transition-colors"
+                            title="Edit details & notes"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(entry)}
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-[#0b1622] transition-colors"
+                            title="Delete from list"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
 
                     </tr>

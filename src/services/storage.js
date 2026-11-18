@@ -40,27 +40,45 @@ export function saveStoredLists(lists) {
 }
 
 export function getEntry(mediaId) {
+  if (mediaId === undefined || mediaId === null) return null;
   const lists = getStoredLists();
-  return lists[mediaId] || null;
+  return lists[String(mediaId)] || lists[Number(mediaId)] || null;
 }
 
-export function upsertEntry(media, entryData) {
+export function upsertEntry(media, entryData = {}) {
   const lists = getStoredLists();
-  const existing = lists[media.id] || {};
+  const mediaId = String(media.id || media.mediaId);
+  const existing = lists[mediaId] || {};
+
+  const parsedProgress = entryData.progress !== undefined 
+    ? (parseInt(entryData.progress, 10) || 0) 
+    : (parseInt(existing.progress, 10) || 0);
+
+  const parsedScore = entryData.score !== undefined 
+    ? (parseFloat(entryData.score) || 0) 
+    : (parseFloat(existing.score) || 0);
+
+  const maxEpisodes = media.episodes !== undefined 
+    ? media.episodes 
+    : (existing.maxEpisodes !== undefined ? existing.maxEpisodes : media.maxEpisodes);
+
+  const maxChapters = media.chapters !== undefined 
+    ? media.chapters 
+    : (existing.maxChapters !== undefined ? existing.maxChapters : media.maxChapters);
 
   const updated = {
     ...existing,
-    mediaId: media.id,
-    type: media.type || 'ANIME',
-    title: media.title,
-    coverImage: media.coverImage,
-    format: media.format,
-    maxEpisodes: media.episodes,
-    maxChapters: media.chapters,
-    duration: media.duration || 24,
+    mediaId,
+    type: media.type || existing.type || 'ANIME',
+    title: media.title || existing.title,
+    coverImage: media.coverImage || existing.coverImage,
+    format: media.format || existing.format,
+    maxEpisodes,
+    maxChapters,
+    duration: media.duration || existing.duration || 24,
     status: entryData.status || existing.status || TRACKING_STATUS.CURRENT,
-    progress: entryData.progress !== undefined ? entryData.progress : (existing.progress || 0),
-    score: entryData.score !== undefined ? entryData.score : (existing.score || 0),
+    progress: Math.max(0, parsedProgress),
+    score: Math.max(0, Math.min(10, parsedScore)),
     notes: entryData.notes !== undefined ? entryData.notes : (existing.notes || ''),
     updatedAt: new Date().toISOString(),
     genres: media.genres || existing.genres || []
@@ -73,15 +91,16 @@ export function upsertEntry(media, entryData) {
     updated.progress = max;
   }
 
-  lists[media.id] = updated;
+  lists[mediaId] = updated;
   saveStoredLists(lists);
   return updated;
 }
 
 export function deleteEntry(mediaId) {
   const lists = getStoredLists();
-  if (lists[mediaId]) {
-    delete lists[mediaId];
+  const idStr = String(mediaId);
+  if (lists[idStr]) {
+    delete lists[idStr];
     saveStoredLists(lists);
     return true;
   }
@@ -130,8 +149,9 @@ export function computeUserStats() {
   const genreCounts = {};
 
   entries.forEach(entry => {
-    if (entry.score && entry.score > 0) {
-      totalScoreSum += entry.score;
+    const scoreVal = parseFloat(entry.score) || 0;
+    if (scoreVal > 0) {
+      totalScoreSum += scoreVal;
       scoredCount++;
     }
 
@@ -142,11 +162,11 @@ export function computeUserStats() {
     }
 
     if (entry.type === 'ANIME') {
-      const eps = entry.progress || 0;
+      const eps = parseInt(entry.progress, 10) || 0;
       totalEpisodesWatched += eps;
       totalMinutesWatched += eps * (entry.duration || 24);
     } else {
-      totalChaptersRead += (entry.progress || 0);
+      totalChaptersRead += (parseInt(entry.progress, 10) || 0);
     }
   });
 
