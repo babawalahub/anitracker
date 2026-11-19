@@ -83,6 +83,8 @@ export function upsertEntry(media, entryData = {}) {
     updatedAt: new Date().toISOString(),
     genres: media.genres || existing.genres || [],
     videoLinks: entryData.videoLinks !== undefined ? entryData.videoLinks : (existing.videoLinks || {}),
+    videoTitles: entryData.videoTitles !== undefined ? entryData.videoTitles : (existing.videoTitles || {}),
+    googleDriveFolderUrl: entryData.googleDriveFolderUrl !== undefined ? entryData.googleDriveFolderUrl : (existing.googleDriveFolderUrl || ''),
     customVideoUrl: entryData.customVideoUrl !== undefined ? entryData.customVideoUrl : (existing.customVideoUrl || '')
   };
 

@@ -81,19 +81,23 @@ export default function MediaDetailModal({ mediaSummary, onClose, onUpdated, use
       score: parseFloat(score) || 0,
       notes,
       videoLinks: userEntry?.videoLinks,
+      videoTitles: userEntry?.videoTitles,
+      googleDriveFolderUrl: userEntry?.googleDriveFolderUrl,
       customVideoUrl: userEntry?.customVideoUrl
     });
     setUserEntry(updated);
     if (onUpdated) onUpdated();
   };
 
-  const handleSaveVideoLinks = (linksMap, mainUrl) => {
+  const handleSaveVideoLinks = (linksMap, mainUrl, titlesMap, folderUrl) => {
     const updated = upsertEntry(media, {
       status,
       progress: parseInt(progress, 10) || 0,
       score: parseFloat(score) || 0,
       notes,
       videoLinks: linksMap,
+      videoTitles: titlesMap !== undefined ? titlesMap : userEntry?.videoTitles,
+      googleDriveFolderUrl: folderUrl !== undefined ? folderUrl : userEntry?.googleDriveFolderUrl,
       customVideoUrl: mainUrl
     });
     setUserEntry(updated);
@@ -108,6 +112,8 @@ export default function MediaDetailModal({ mediaSummary, onClose, onUpdated, use
       score: parseFloat(newScore) || 0,
       notes,
       videoLinks: userEntry?.videoLinks,
+      videoTitles: userEntry?.videoTitles,
+      googleDriveFolderUrl: userEntry?.googleDriveFolderUrl,
       customVideoUrl: userEntry?.customVideoUrl
     });
     setUserEntry(updated);
@@ -127,6 +133,8 @@ export default function MediaDetailModal({ mediaSummary, onClose, onUpdated, use
       score: parseFloat(score) || 0,
       notes,
       videoLinks: userEntry?.videoLinks,
+      videoTitles: userEntry?.videoTitles,
+      googleDriveFolderUrl: userEntry?.googleDriveFolderUrl,
       customVideoUrl: userEntry?.customVideoUrl
     });
     setUserEntry(updated);
