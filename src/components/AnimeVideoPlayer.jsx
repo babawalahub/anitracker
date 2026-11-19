@@ -71,7 +71,7 @@ export default function AnimeVideoPlayer({
   }, [currentEpisode, videoLinks, videoTitles, seriesName]);
 
   // Determine current active video URL & title
-  const activeUrl = videoLinks[currentEpisode] || (currentEpisode === 1 ? userEntry?.customVideoUrl : '') || googleDriveFolderUrl || '';
+  const activeUrl = videoLinks[currentEpisode] || (currentEpisode === 1 && userEntry?.customVideoUrl && !userEntry.customVideoUrl.includes('/folders/') ? userEntry.customVideoUrl : '') || '';
   const currentTitle = videoTitles[currentEpisode] || formatEpisodeTitle(seriesName, currentEpisode);
   const totalLinkedEpisodes = Object.keys(videoLinks).filter(k => Boolean(videoLinks[k])).length;
   const currentScore = userEntry?.score || 0;
@@ -129,6 +129,11 @@ export default function AnimeVideoPlayer({
       for (let i = 1; i <= targetCount; i++) {
         newTitles[i] = formatEpisodeTitle(seriesName, i);
       }
+    }
+
+    // If cleanedLink is a direct single file link (not a folder), assign it to Episode 1
+    if (cleanedLink && !cleanedLink.includes('/folders/') && !cleanedLink.includes('folderview')) {
+      newLinks[1] = cleanedLink;
     }
 
     setVideoLinks(newLinks);
@@ -201,6 +206,15 @@ export default function AnimeVideoPlayer({
     setVideoLinks(updatedLinks);
     setVideoTitles(updatedTitles);
     onSaveLinks(updatedLinks, updatedLinks[1] || '', updatedTitles, googleDriveFolderUrl);
+  };
+
+  // Handler: Save link directly from in-player input
+  const handleSaveEpisodeLink = (epNum, linkUrl) => {
+    const cleaned = cleanUrl(linkUrl);
+    if (!cleaned) return;
+    const updatedLinks = { ...videoLinks, [epNum]: cleaned };
+    setVideoLinks(updatedLinks);
+    onSaveLinks(updatedLinks, updatedLinks[1] || cleaned, videoTitles, googleDriveFolderUrl);
   };
 
   const handleNextEpisode = () => {
@@ -341,10 +355,11 @@ export default function AnimeVideoPlayer({
               <div className="bg-[#111c2e] p-3 rounded-2xl border border-sky-500/30 text-xs space-y-1.5 text-slate-300">
                 <p className="font-bold text-sky-400 flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5" />
-                  <span>All episodes automatically play in your integrated player with subtitles!</span>
+                  <span>How to connect your anime & play episodes online:</span>
                 </p>
-                <p className="text-[11px] text-slate-400">
-                  Paste your Google Drive link or folder below. All {totalEpCount} episodes will be created with titles (e.g. {seriesName} - S01E01 to S01E{totalEpCount < 10 ? '0' + totalEpCount : totalEpCount}).
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  • <strong>Folder Link:</strong> Connects your anime folder and creates all {totalEpCount} episode titles.<br />
+                  • <strong>Online Video Streaming:</strong> Paste the direct link for each episode (e.g. <code className="text-sky-300 font-mono">https://drive.google.com/file/d/.../view</code>) either below or directly inside the player using the quick-input bar!
                 </p>
               </div>
 
@@ -387,11 +402,10 @@ export default function AnimeVideoPlayer({
                 <textarea
                   rows={4}
                   placeholder={
-                    "Example:\n" +
-                    `${seriesName} - S01E01.mkv\n` +
-                    `${seriesName} - S01E02.mkv\n` +
-                    `${seriesName} - S01E03.mkv\n` +
-                    "(If left blank, it will auto-create Episode 1 through " + driveEpCount + ")"
+                    "Example with links:\n" +
+                    `${seriesName} - S01E01.mkv: https://drive.google.com/file/d/1ABC.../view\n` +
+                    `${seriesName} - S01E02.mkv: https://drive.google.com/file/d/2XYZ.../view\n` +
+                    "(Or just paste filenames like S01E01.mkv to auto-name all episodes)"
                   }
                   value={driveFileListText}
                   onChange={(e) => setDriveFileListText(e.target.value)}
@@ -557,6 +571,8 @@ export default function AnimeVideoPlayer({
           episodeNum={currentEpisode}
           totalEpisodes={totalEpCount}
           media={media}
+          googleDriveFolderUrl={googleDriveFolderUrl}
+          onSaveEpisodeLink={handleSaveEpisodeLink}
           episodesList={allEpisodeNumbers.map(ep => ({
             num: ep,
             title: videoTitles[ep] || formatEpisodeTitle(seriesName, ep),

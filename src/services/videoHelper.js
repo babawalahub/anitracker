@@ -121,69 +121,54 @@ export function parseMultipleVideoEntries(text, startingEp = 1) {
   let currentAutoEp = startingEp;
 
   lines.forEach((line) => {
-    // Check if line is a Google Drive folder link
+    // Check if line contains a Google Drive folder link
     if (line.includes('drive.google.com') && (line.includes('/folders/') || line.includes('folderview'))) {
-      const cleaned = cleanUrl(line.match(/(https?:\/\/[^\s]+)/i)?.[1] || line);
-      if (cleaned) {
-        folderUrl = cleaned;
-      }
+      const match = line.match(/(https?:\/\/[^\s]+)/i);
+      if (match) folderUrl = cleanUrl(match[1]);
     }
 
-    // Pattern 1: "Episode 1 - Title: https://..." or "Ep 1: Title - https://..."
-    const epWithTitleMatch = line.match(/(?:ep(?:isode)?\.?\s*(\d+)|\b(\d+)\s*[:.-])\s*([^:|\n]+?)\s*[:|-]\s*(https?:\/\/[^\s]+)/i);
-    if (epWithTitleMatch) {
-      const epNum = parseInt(epWithTitleMatch[1] || epWithTitleMatch[2], 10);
-      const title = epWithTitleMatch[3]?.trim();
-      const rawUrl = epWithTitleMatch[4];
-      if (epNum && rawUrl) {
-        links[epNum] = cleanUrl(rawUrl);
-        if (title) titles[epNum] = title;
-        currentAutoEp = Math.max(currentAutoEp, epNum + 1);
-        return;
-      }
-    }
-
-    // Pattern 2: "Title | https://..."
-    const pipeMatch = line.match(/^([^|]+)\|\s*(https?:\/\/[^\s]+)/i);
-    if (pipeMatch) {
-      const title = pipeMatch[1]?.trim();
-      const rawUrl = pipeMatch[2];
-      if (rawUrl) {
-        links[currentAutoEp] = cleanUrl(rawUrl);
-        if (title) titles[currentAutoEp] = title;
-        currentAutoEp++;
-        return;
-      }
-    }
-
-    // Pattern 3: Standard "Episode 1: https://..." or "1. https://..."
-    const epMatch = line.match(/(?:ep(?:isode)?\.?\s*(\d+)|\b(\d+)\s*[:.-])\s*(https?:\/\/[^\s]+)/i);
-    if (epMatch) {
-      const epNum = parseInt(epMatch[1] || epMatch[2], 10);
-      const rawUrl = epMatch[3];
-      if (epNum && rawUrl) {
-        links[epNum] = cleanUrl(rawUrl);
-        currentAutoEp = Math.max(currentAutoEp, epNum + 1);
-        return;
-      }
-    }
-
-    // Pattern 4: Raw URL on line
     const urlMatch = line.match(/(https?:\/\/[^\s]+)/i);
     if (urlMatch) {
       const rawUrl = urlMatch[1];
-      links[currentAutoEp] = cleanUrl(rawUrl);
-      currentAutoEp++;
-      return;
-    }
+      const textWithoutUrl = line.replace(rawUrl, '').trim();
 
-    // Pattern 5: Plain file name (e.g. "Reincarnated as a Sword - S01E01.mkv" from Google Drive list)
-    let cleanName = line.replace(/\.(mkv|mp4|webm|avi|mov)$/i, '').trim();
-    if (cleanName) {
-      const epMatchInName = cleanName.match(/(?:s\d+e|ep(?:isode)?\.?\s*|\bep\s*)(\d+)/i);
-      const epNum = epMatchInName ? parseInt(epMatchInName[1], 10) : currentAutoEp;
-      titles[epNum] = cleanName;
+      // Look for episode number in line or title
+      const sxxExx = line.match(/(?:s\d+e|ep(?:isode)?\.?\s*|\be)(\d+)\b/i);
+      const leadingNum = textWithoutUrl.match(/^(\d+)[\s.:-]/);
+
+      let epNum = currentAutoEp;
+      if (sxxExx) {
+        epNum = parseInt(sxxExx[1], 10);
+      } else if (leadingNum) {
+        epNum = parseInt(leadingNum[1], 10);
+      }
+
+      // Clean up title (remove trailing colons, dashes, pipes, and file extensions)
+      let cleanTitle = textWithoutUrl
+        .replace(/\.(mkv|mp4|webm|avi|mov)$/i, '')
+        .replace(/^[:\s|,-]+|[:\s|,-]+$/g, '')
+        .trim();
+
+      if (!rawUrl.includes('/folders/') && !rawUrl.includes('folderview')) {
+        links[epNum] = cleanUrl(rawUrl);
+      }
+      if (cleanTitle) {
+        titles[epNum] = cleanTitle;
+      }
       currentAutoEp = Math.max(currentAutoEp, epNum + 1);
+    } else {
+      // Plain text without URL (e.g. "Reincarnated as a Sword - S01E01.mkv" from Google Drive list)
+      let cleanName = line.replace(/\.(mkv|mp4|webm|avi|mov)$/i, '').trim();
+      if (cleanName) {
+        const epMatchInName = cleanName.match(/(?:s\d+e|ep(?:isode)?\.?\s*|\bep\s*)(\d+)/i);
+        const leadingNum = cleanName.match(/^(\d+)[\s.:-]/);
+        const epNum = epMatchInName 
+          ? parseInt(epMatchInName[1], 10) 
+          : (leadingNum ? parseInt(leadingNum[1], 10) : currentAutoEp);
+
+        titles[epNum] = cleanName;
+        currentAutoEp = Math.max(currentAutoEp, epNum + 1);
+      }
     }
   });
 
