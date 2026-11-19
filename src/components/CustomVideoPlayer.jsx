@@ -43,7 +43,23 @@ export default function CustomVideoPlayer({
   // Quick In-Player Link Input State
   const [quickLinkInput, setQuickLinkInput] = useState('');
   const [showQuickInput, setShowQuickInput] = useState(false);
-  const [userForceFolderView, setUserForceFolderView] = useState(false);
+  const [streamSource, setStreamSource] = useState('auto'); // 'auto' | 'online' | 'drive_folder'
+  const [localFileBlobUrl, setLocalFileBlobUrl] = useState(null);
+  const [localFileName, setLocalFileName] = useState('');
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    setLocalFileBlobUrl(null);
+    setLocalFileName('');
+  }, [episodeNum]);
+
+  const handleLocalFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const blobUrl = URL.createObjectURL(file);
+    setLocalFileBlobUrl(blobUrl);
+    setLocalFileName(file.name);
+  };
 
   // Playback State (for direct HTML5 video)
   const [isPlaying, setIsPlaying] = useState(false);
@@ -371,9 +387,12 @@ export default function CustomVideoPlayer({
   }[subColor];
 
   const isDirectVideo = embedInfo?.type === 'video';
-  const isGoogleDriveFile = embedInfo?.type === 'drive_file';
+  const isGoogleDriveFile = embedInfo?.type === 'drive_file' && !localFileBlobUrl;
   const driveFolderId = embedInfo?.folderId || 
     (googleDriveFolderUrl ? (googleDriveFolderUrl.match(/\/folders\/([a-zA-Z0-9_-]+)/)?.[1] || googleDriveFolderUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/)?.[1]) : null);
+
+  const seriesCleanName = animeTitle || title || media?.title?.english || media?.title?.romaji || 'Anime';
+  const onlineEpisodeSearchUrl = `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(seriesCleanName + ' Episode ' + episodeNum + ' anime')}&autoplay=1`;
 
   return (
     <div
@@ -382,9 +401,17 @@ export default function CustomVideoPlayer({
       onMouseLeave={() => { if (isPlaying) setControlsVisible(false); }}
       className="relative aspect-video w-full bg-black overflow-hidden select-none group flex items-center justify-center"
     >
+      {/* Hidden local file input to play MKV / MP4 directly from computer */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleLocalFileSelect}
+        accept="video/*,.mkv,.mp4,.webm"
+        className="hidden"
+      />
 
-      {/* ── CASE 1: USER EXPLICITLY SWITCHED TO VIEW GOOGLE DRIVE FOLDER ── */}
-      {userForceFolderView && driveFolderId ? (
+      {/* ── CASE 1: USER VIEWING GOOGLE DRIVE FOLDER FILES ── */}
+      {streamSource === 'drive_folder' && driveFolderId ? (
         <div className="relative w-full h-full bg-black">
           <iframe
             src={`https://drive.google.com/embeddedfolderview?id=${driveFolderId}#list`}
@@ -419,8 +446,40 @@ export default function CustomVideoPlayer({
             </form>
           </div>
         </div>
+      ) : localFileBlobUrl ? (
+        /* ── CASE 2: DIRECT LOCAL VIDEO FROM COMPUTER (Plays MKV, MP4, WebM in HD with Audio & Subs) ── */
+        <>
+          <video
+            ref={videoRef}
+            src={localFileBlobUrl}
+            poster={poster}
+            playsInline
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
+            onTimeUpdate={handleVideoTimeUpdate}
+            onLoadedMetadata={() => setDuration(videoRef.current?.duration || 0)}
+            onEnded={onEnded}
+            onClick={togglePlay}
+            className="w-full h-full object-contain cursor-pointer"
+          />
+
+          {!isPlaying && (
+            <button
+              onClick={togglePlay}
+              className="absolute z-10 w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-sky-500/90 text-white flex items-center justify-center shadow-2xl backdrop-blur transition-all hover:scale-110 hover:bg-sky-400 group-hover:flex"
+            >
+              <Play className="w-8 h-8 sm:w-10 sm:h-10 fill-white ml-1" />
+            </button>
+          )}
+
+          {/* Toast info */}
+          <div className="absolute top-14 left-4 z-20 px-3 py-1 rounded-xl bg-emerald-500/90 text-white text-[11px] font-bold backdrop-blur shadow-lg flex items-center gap-1.5">
+            <Check className="w-3.5 h-3.5" />
+            <span>Playing Local File: {localFileName}</span>
+          </div>
+        </>
       ) : isGoogleDriveFile ? (
-        /* ── CASE 2: GOOGLE DRIVE SINGLE FILE LINK (Direct File Plays in Drive Player Online) ── */
+        /* ── CASE 3: GOOGLE DRIVE SINGLE FILE LINK (Direct File Plays in Drive Player Online) ── */
         <div className="relative w-full h-full bg-black">
           <iframe
             src={embedInfo.embedUrl}
@@ -431,7 +490,7 @@ export default function CustomVideoPlayer({
           />
         </div>
       ) : embedInfo && (embedInfo.type === 'youtube' || embedInfo.type === 'iframe') ? (
-        /* ── CASE 3: YOUTUBE OR EXTERNAL IFRAME STREAM ── */
+        /* ── CASE 4: YOUTUBE OR EXTERNAL IFRAME STREAM ── */
         <div className="relative w-full h-full bg-black">
           <iframe
             src={embedInfo.embedUrl}
@@ -442,7 +501,7 @@ export default function CustomVideoPlayer({
           />
         </div>
       ) : embedInfo && isDirectVideo ? (
-        /* ── CASE 4: DIRECT HTML5 VIDEO (.mp4, .webm, etc.) ── */
+        /* ── CASE 5: DIRECT HTML5 VIDEO (.mp4, .webm, etc.) ── */
         <>
           <video
             ref={videoRef}
@@ -467,123 +526,57 @@ export default function CustomVideoPlayer({
             </button>
           )}
         </>
-      ) : driveFolderId ? (
-        /* ── CASE 5: GOOGLE DRIVE FOLDER CONNECTED (Show Folder Files & Quick Episode Linker) ── */
+      ) : (
+        /* ── CASE 6: ONLINE EPISODE STREAM (ALWAYS PLAYABLE INSTANTLY) ── */
         <div className="relative w-full h-full bg-black">
           <iframe
-            src={`https://drive.google.com/embeddedfolderview?id=${driveFolderId}#list`}
+            src={onlineEpisodeSearchUrl}
             title={formattedEpTitle}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
-            className="w-full h-full border-0 pt-11 pb-16"
+            className="w-full h-full border-0 pt-10"
           />
 
-          {/* Bottom Quick-Input Bar while browsing Drive folder */}
-          <div className="absolute bottom-2 left-2 right-2 z-30 bg-[#0b1622]/95 border border-sky-500/50 backdrop-blur rounded-2xl p-2.5 shadow-2xl flex flex-wrap items-center justify-between gap-2 text-xs">
+          {/* Bottom Floating Bar with Instant Options */}
+          <div className="absolute bottom-2 left-2 right-2 z-30 bg-[#0b1622]/95 border border-sky-500/50 backdrop-blur rounded-2xl p-2 shadow-2xl flex flex-wrap items-center justify-between gap-2 text-xs">
             <span className="text-slate-300 font-bold flex items-center gap-1.5 min-w-0">
-              <Sparkles className="w-4 h-4 text-sky-400 flex-shrink-0" />
-              <span className="truncate">Right-click video for <strong>Episode {episodeNum}</strong> in Drive ➔ Copy link ➔ Paste here:</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
+              <span className="truncate">Playing <strong>{formattedEpTitle}</strong> Online</span>
             </span>
-            <form onSubmit={handleQuickSaveLink} className="flex items-center gap-1.5 flex-1 max-w-md">
-              <input
-                type="text"
-                placeholder="https://drive.google.com/file/d/.../view"
-                value={quickLinkInput}
-                onChange={(e) => setQuickLinkInput(e.target.value)}
-                required
-                className="flex-1 bg-[#151f2e] border border-[#1e293b] rounded-xl px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
-              />
+
+            <div className="flex items-center gap-1.5">
               <button
-                type="submit"
-                className="px-3.5 py-1.5 bg-sky-500 hover:bg-sky-400 text-white font-black rounded-xl shadow transition-all flex items-center gap-1 flex-shrink-0"
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="px-2.5 py-1 bg-[#151f2e] hover:bg-sky-500 hover:text-white text-sky-400 rounded-xl font-bold flex items-center gap-1 border border-sky-500/30 transition-all text-[11px]"
+                title="Play MKV or MP4 video file from your computer"
               >
-                <Play className="w-3.5 h-3.5 fill-white" />
-                <span>Play Ep {episodeNum}</span>
+                <Upload className="w-3 h-3" />
+                <span>Play PC File</span>
               </button>
-            </form>
-          </div>
-        </div>
-      ) : (
-        /* ── CASE 5: READY TO PLAY EPISODE (Interactive Episode Deck) ── */
-        <div className="relative w-full h-full flex items-center justify-center p-4 overflow-hidden">
-          {/* Blurred Backdrop of the Anime */}
-          {poster && (
-            <div 
-              className="absolute inset-0 bg-cover bg-center filter blur-xl opacity-20 scale-110"
-              style={{ backgroundImage: `url(${poster})` }}
-            />
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/80 to-[#0b1622]/90" />
 
-          {/* Interactive Card */}
-          <div className="relative z-10 flex flex-col items-center justify-center p-6 text-center max-w-lg bg-[#0b1622]/95 border border-[#1e293b] rounded-3xl shadow-2xl backdrop-blur-md">
-            
-            <div className="w-14 h-14 rounded-2xl bg-sky-500/20 text-sky-400 flex items-center justify-center mb-3 border border-sky-500/30 shadow-lg shadow-sky-500/20">
-              <Play className="w-7 h-7 fill-sky-400 ml-1 text-sky-400" />
-            </div>
+              <button
+                type="button"
+                onClick={() => setShowQuickInput(true)}
+                className="px-2.5 py-1 bg-[#151f2e] hover:bg-sky-500 hover:text-white text-slate-300 rounded-xl font-bold flex items-center gap-1 border border-[#1e293b] transition-all text-[11px]"
+                title="Paste Drive or video link"
+              >
+                <LinkIcon className="w-3 h-3" />
+                <span>Paste Link</span>
+              </button>
 
-            <div className="flex items-center gap-2 mb-1.5">
-              <span className="px-2.5 py-0.5 rounded-full bg-sky-500/20 text-sky-400 text-[11px] font-black border border-sky-500/30 uppercase tracking-wide">
-                Episode {episodeNum} of {totalEpisodes}
-              </span>
-              {googleDriveFolderUrl && (
-                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[11px] font-bold border border-emerald-500/30 flex items-center gap-1">
-                  <Folder className="w-3 h-3 text-emerald-400" />
-                  <span>Drive Folder Connected</span>
-                </span>
+              {driveFolderId && (
+                <button
+                  type="button"
+                  onClick={() => setStreamSource('drive_folder')}
+                  className="px-2.5 py-1 bg-sky-500/20 hover:bg-sky-500 text-sky-300 hover:text-white rounded-xl font-bold flex items-center gap-1 border border-sky-500/40 transition-all text-[11px]"
+                  title="View your Google Drive folder files"
+                >
+                  <Folder className="w-3 h-3" />
+                  <span>Drive Files</span>
+                </button>
               )}
             </div>
-
-            <h4 className="text-white font-black text-base sm:text-lg mb-1 truncate max-w-full">
-              {formattedEpTitle}
-            </h4>
-
-            <p className="text-xs text-slate-300 mb-4 leading-relaxed">
-              Paste your Google Drive link or video URL below to stream Episode {episodeNum} online:
-            </p>
-
-            <form onSubmit={handleQuickSaveLink} className="w-full flex flex-col sm:flex-row gap-2 mb-3">
-              <input
-                type="text"
-                placeholder="https://drive.google.com/file/d/1ABCXYZ.../view"
-                value={quickLinkInput}
-                onChange={(e) => setQuickLinkInput(e.target.value)}
-                required
-                className="flex-1 bg-[#151f2e] border border-[#1e293b] rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono shadow-inner"
-              />
-              <button
-                type="submit"
-                className="px-5 py-2 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-black text-xs rounded-xl shadow-lg shadow-sky-500/30 transition-all flex items-center justify-center gap-1.5 whitespace-nowrap active:scale-95"
-              >
-                <Play className="w-3.5 h-3.5 fill-white" />
-                <span>Play Video Online</span>
-              </button>
-            </form>
-
-            {/* Quick Actions if Google Drive Folder is connected */}
-            {googleDriveFolderUrl && (
-              <div className="flex flex-wrap items-center justify-center gap-2 pt-1 border-t border-[#1e293b] w-full text-xs">
-                <a
-                  href={googleDriveFolderUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3 py-1.5 bg-[#151f2e] hover:bg-[#1e293b] text-sky-400 hover:text-white rounded-xl font-bold flex items-center gap-1.5 border border-[#1e293b] transition-all"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Open Folder in Drive to Copy Link</span>
-                </a>
-                {driveFolderId && (
-                  <button
-                    type="button"
-                    onClick={() => setViewingFolderEmbed(true)}
-                    className="px-3 py-1.5 bg-sky-500/15 hover:bg-sky-500 text-sky-300 hover:text-white rounded-xl font-bold flex items-center gap-1.5 border border-sky-500/30 transition-all"
-                  >
-                    <Folder className="w-3.5 h-3.5" />
-                    <span>View Folder Files Inside</span>
-                  </button>
-                )}
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -611,7 +604,7 @@ export default function CustomVideoPlayer({
         {/* Left: Episode Title & Dropdown Switcher */}
         <div className="flex items-center gap-2 max-w-[65%]">
           <span className="px-2 py-0.5 rounded bg-sky-500/80 text-white text-[10px] font-extrabold uppercase flex-shrink-0 flex items-center gap-1">
-            {userForceFolderView ? '📁 Drive Folder' : isGoogleDriveFile ? '📁 Drive Video' : embedInfo?.type === 'youtube' ? '▶ YouTube' : isDirectVideo ? '⚡ Video' : driveFolderId ? '📁 Drive Series' : '▶ Video Player'}
+            {localFileBlobUrl ? '📁 PC Video' : isGoogleDriveFile ? '📁 Drive Video' : embedInfo?.type === 'youtube' ? '▶ YouTube' : isDirectVideo ? '⚡ Video' : streamSource === 'drive_folder' ? '📁 Drive Folder' : '⚡ Online Stream'}
           </span>
 
           {/* Episode Switcher Dropdown (Where Episode 12 is written) */}
@@ -640,7 +633,7 @@ export default function CustomVideoPlayer({
                     onClick={() => {
                       if (onSelectEpisode) onSelectEpisode(ep.num);
                       setShowEpDropdown(false);
-                      setUserForceFolderView(false);
+                      setStreamSource('auto');
                     }}
                     className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all text-left mb-1 ${
                       ep.num === episodeNum
@@ -657,22 +650,33 @@ export default function CustomVideoPlayer({
           </div>
         </div>
 
-        {/* Right Controls: Drive Files Toggle, Quick Link Button, Open Link, Dual Audio, Subtitles */}
+        {/* Right Controls: PC File, Drive Files Toggle, Quick Link Button, Open Link, Dual Audio, Subtitles */}
         <div className="flex items-center gap-1.5 sm:gap-2">
+
+          {/* Pick Video File from PC */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl bg-[#151f2e] hover:bg-sky-500 hover:text-white text-sky-400 text-xs font-bold backdrop-blur border border-sky-500/30 transition-all hover:scale-105"
+            title="Play MKV or MP4 video file directly from your computer"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">PC File</span>
+          </button>
 
           {/* If Google Drive Folder exists: Toggle between Episode Video and Drive Files List */}
           {driveFolderId && (
             <button
-              onClick={() => setUserForceFolderView(!userForceFolderView)}
+              onClick={() => setStreamSource(streamSource === 'drive_folder' ? 'auto' : 'drive_folder')}
               className={`flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold backdrop-blur border transition-all ${
-                userForceFolderView 
+                streamSource === 'drive_folder' 
                   ? 'bg-sky-500 text-white border-sky-400 shadow' 
                   : 'bg-black/60 hover:bg-black text-slate-200 border-white/20'
               }`}
               title="Toggle between Episode Video Player and Drive Folder View"
             >
               <Folder className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">{userForceFolderView ? 'Play Video' : 'Drive Files'}</span>
+              <span className="hidden sm:inline">{streamSource === 'drive_folder' ? 'Play Video' : 'Drive Files'}</span>
             </button>
           )}
 
