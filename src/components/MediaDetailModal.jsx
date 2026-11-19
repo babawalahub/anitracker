@@ -282,7 +282,13 @@ export default function MediaDetailModal({ mediaSummary, onClose, onUpdated, use
                 </label>
                 <select
                   value={status}
-                  onChange={(e) => setStatus(e.target.value)}
+                  onChange={(e) => {
+                    const newStatus = e.target.value;
+                    setStatus(newStatus);
+                    if (newStatus === TRACKING_STATUS.COMPLETED && maxUnits) {
+                      setProgress(maxUnits);
+                    }
+                  }}
                   className="w-full bg-[#0b1622] border border-[#1e293b] rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500 font-medium cursor-pointer"
                 >
                   {Object.entries(TRACKING_STATUS).map(([key, val]) => (

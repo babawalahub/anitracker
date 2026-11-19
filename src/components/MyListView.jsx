@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { 
   Plus, Minus, Check, Star, Search, Trash2, Edit3, 
-  Film, BookOpen, Layers, ArrowLeft, ExternalLink 
+  Film, BookOpen, Layers, ArrowLeft, ExternalLink, 
+  LayoutGrid, Table as TableIcon, Trophy, CheckCircle2, Play 
 } from 'lucide-react';
 import { TRACKING_STATUS, STATUS_LABELS, upsertEntry, deleteEntry } from '../services/storage';
 
@@ -14,6 +15,7 @@ export default function MyListView({
   const [activeStatusTab, setActiveStatusTab] = useState('ALL');
   const [filterType, setFilterType] = useState('ALL'); // ALL, ANIME, MANGA
   const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState('grid'); // 'grid' (visual cards with images) | 'table'
 
   const allEntries = Object.values(lists);
 
@@ -43,7 +45,9 @@ export default function MyListView({
     maxChapters: entry.maxChapters,
     duration: entry.duration,
     genres: entry.genres,
-    status: entry.status
+    status: entry.status,
+    videoLinks: entry.videoLinks,
+    customVideoUrl: entry.customVideoUrl
   });
 
   const handleIncrement = (entry) => {
@@ -63,7 +67,9 @@ export default function MyListView({
       status: newStatus,
       progress: max ? Math.min(nextProgress, max) : nextProgress,
       score: entry.score,
-      notes: entry.notes
+      notes: entry.notes,
+      videoLinks: entry.videoLinks,
+      customVideoUrl: entry.customVideoUrl
     });
 
     if (onUpdated) onUpdated();
@@ -83,7 +89,9 @@ export default function MyListView({
       status: newStatus,
       progress: nextProgress,
       score: entry.score,
-      notes: entry.notes
+      notes: entry.notes,
+      videoLinks: entry.videoLinks,
+      customVideoUrl: entry.customVideoUrl
     });
 
     if (onUpdated) onUpdated();
@@ -105,18 +113,30 @@ export default function MyListView({
       status: newStatus,
       progress: prog,
       score: entry.score,
-      notes: entry.notes
+      notes: entry.notes,
+      videoLinks: entry.videoLinks,
+      customVideoUrl: entry.customVideoUrl
     });
 
     if (onUpdated) onUpdated();
   };
 
+  // When marking as Completed, auto-fill all episodes to maximum!
   const handleStatusChange = (entry, newStatus) => {
+    const max = entry.type === 'ANIME' ? entry.maxEpisodes : entry.maxChapters;
+    let newProgress = entry.progress;
+    
+    if (newStatus === TRACKING_STATUS.COMPLETED && max) {
+      newProgress = max; // Auto-fill full episodes!
+    }
+
     upsertEntry(getMediaPayload(entry), {
       status: newStatus,
-      progress: entry.progress,
+      progress: newProgress,
       score: entry.score,
-      notes: entry.notes
+      notes: entry.notes,
+      videoLinks: entry.videoLinks,
+      customVideoUrl: entry.customVideoUrl
     });
 
     if (onUpdated) onUpdated();
@@ -127,7 +147,9 @@ export default function MyListView({
       status: entry.status,
       progress: entry.progress,
       score: parseFloat(newScore) || 0,
-      notes: entry.notes
+      notes: entry.notes,
+      videoLinks: entry.videoLinks,
+      customVideoUrl: entry.customVideoUrl
     });
 
     if (onUpdated) onUpdated();
@@ -141,10 +163,18 @@ export default function MyListView({
     }
   };
 
+  // Compute Completed Stats
+  const completedEntries = allEntries.filter(e => e.status === TRACKING_STATUS.COMPLETED);
+  const completedAnime = completedEntries.filter(e => e.type === 'ANIME');
+  const completedManga = completedEntries.filter(e => e.type === 'MANGA');
+
+  const totalEpisodesWatched = completedAnime.reduce((sum, e) => sum + (parseInt(e.progress, 10) || e.maxEpisodes || 0), 0);
+  const totalChaptersRead = completedManga.reduce((sum, e) => sum + (parseInt(e.progress, 10) || e.maxChapters || 0), 0);
+
   const statusCounts = {
     ALL: allEntries.length,
     CURRENT: allEntries.filter(e => e.status === TRACKING_STATUS.CURRENT).length,
-    COMPLETED: allEntries.filter(e => e.status === TRACKING_STATUS.COMPLETED).length,
+    COMPLETED: completedEntries.length,
     PLANNING: allEntries.filter(e => e.status === TRACKING_STATUS.PLANNING).length,
     PAUSED: allEntries.filter(e => e.status === TRACKING_STATUS.PAUSED).length,
     DROPPED: allEntries.filter(e => e.status === TRACKING_STATUS.DROPPED).length,
@@ -153,11 +183,65 @@ export default function MyListView({
   return (
     <div className="space-y-6">
       
-      {/* Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#151f2e] border border-[#1e293b] p-4 rounded-2xl">
+      {/* 1. COMPLETED SHOWCASE HERO BANNER (shown when Completed tab is clicked) */}
+      {activeStatusTab === 'COMPLETED' && (
+        <div className="relative rounded-3xl overflow-hidden p-6 bg-gradient-to-r from-emerald-950 via-[#151f2e] to-sky-950 border border-emerald-500/30 shadow-2xl animate-in fade-in duration-300">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  <Trophy className="w-5 h-5 text-emerald-400" />
+                </span>
+                <span className="text-xs font-black uppercase tracking-wider text-emerald-400">
+                  Completed Showcase
+                </span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-black text-white">
+                All Completed Anime & Manga
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-300 mt-1 font-medium">
+                You have completely watched <strong className="text-emerald-400">{completedAnime.length} Anime</strong> ({totalEpisodesWatched} episodes full) & read <strong className="text-pink-400">{completedManga.length} Manga</strong> ({totalChaptersRead} chapters).
+              </p>
+            </div>
+
+            {/* Quick Filter Pill Buttons */}
+            <div className="flex items-center gap-2 bg-[#0b1622] p-1.5 rounded-2xl border border-[#1e293b]">
+              <button
+                onClick={() => setFilterType('ALL')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  filterType === 'ALL' ? 'bg-emerald-500 text-white' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                All ({completedEntries.length})
+              </button>
+              <button
+                onClick={() => setFilterType('ANIME')}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  filterType === 'ANIME' ? 'bg-emerald-500 text-white' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Film className="w-3.5 h-3.5" />
+                <span>Anime ({completedAnime.length})</span>
+              </button>
+              <button
+                onClick={() => setFilterType('MANGA')}
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  filterType === 'MANGA' ? 'bg-emerald-500 text-white' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>Manga ({completedManga.length})</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. HEADER CONTROLS BAR */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#151f2e] border border-[#1e293b] p-4 rounded-2xl">
         
         {/* Left: Back button + Status Tabs */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
           {onBackToBrowse && (
             <button
               onClick={onBackToBrowse}
@@ -175,10 +259,13 @@ export default function MyListView({
               onClick={() => setActiveStatusTab(st)}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
                 activeStatusTab === st
-                  ? 'bg-sky-500 text-white shadow-md shadow-sky-500/20'
+                  ? st === 'COMPLETED' 
+                    ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/20' 
+                    : 'bg-sky-500 text-white shadow-md shadow-sky-500/20'
                   : 'bg-[#0b1622] text-slate-400 hover:text-white border border-[#1e293b]'
               }`}
             >
+              {st === 'COMPLETED' && <CheckCircle2 className="w-3.5 h-3.5" />}
               <span>{st === 'ALL' ? 'All' : STATUS_LABELS[st]}</span>
               <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
                 activeStatusTab === st ? 'bg-black/30 text-white' : 'bg-[#1e293b] text-slate-400'
@@ -189,19 +276,62 @@ export default function MyListView({
           ))}
         </div>
 
-        {/* Filter & Search Controls */}
+        {/* Right: Media Type selector, View Toggle (Grid vs Table), and Search */}
         <div className="flex items-center gap-2">
           
-          <select
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-            className="bg-[#0b1622] border border-[#1e293b] rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-sky-500 cursor-pointer"
-          >
-            <option value="ALL">All Media</option>
-            <option value="ANIME">Anime Only</option>
-            <option value="MANGA">Manga Only</option>
-          </select>
+          {/* Anime / Manga Selector */}
+          <div className="bg-[#0b1622] p-1 rounded-xl border border-[#1e293b] flex items-center">
+            <button
+              onClick={() => setFilterType('ALL')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                filterType === 'ALL' ? 'bg-sky-500 text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              All
+            </button>
+            <button
+              onClick={() => setFilterType('ANIME')}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                filterType === 'ANIME' ? 'bg-sky-500 text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Film className="w-3 h-3" />
+              <span>Anime</span>
+            </button>
+            <button
+              onClick={() => setFilterType('MANGA')}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                filterType === 'MANGA' ? 'bg-sky-500 text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <BookOpen className="w-3 h-3" />
+              <span>Manga</span>
+            </button>
+          </div>
 
+          {/* Grid vs Table View Toggle */}
+          <div className="bg-[#0b1622] p-1 rounded-xl border border-[#1e293b] flex items-center">
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-1.5 rounded-lg transition-all ${
+                viewMode === 'grid' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
+              }`}
+              title="Show Cover Images & Cards Grid"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setViewMode('table')}
+              className={`p-1.5 rounded-lg transition-all ${
+                viewMode === 'table' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
+              }`}
+              title="Show Table List View"
+            >
+              <TableIcon className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Search */}
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
@@ -209,7 +339,7 @@ export default function MyListView({
               placeholder="Search in list..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="bg-[#0b1622] border border-[#1e293b] rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 w-36 sm:w-48"
+              className="bg-[#0b1622] border border-[#1e293b] rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 w-32 sm:w-44"
             />
           </div>
 
@@ -217,15 +347,17 @@ export default function MyListView({
 
       </div>
 
-      {/* List Table / Entries */}
+      {/* 3. CONTENT AREA */}
       {filtered.length === 0 ? (
-        <div className="text-center py-20 bg-[#151f2e] border border-[#1e293b] rounded-2xl">
+        <div className="text-center py-20 bg-[#151f2e] border border-[#1e293b] rounded-3xl">
           <Layers className="w-12 h-12 text-slate-500 mx-auto mb-3 opacity-60" />
           <h3 className="text-lg font-bold text-white">No items found</h3>
           <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1">
             {allEntries.length === 0
-              ? "You haven't tracked any anime or manga yet. Click 'Browse' to add your favorite titles!"
-              : "No titles match your selected filters."}
+              ? "You haven't tracked any anime or manga yet. Click 'Browse' to add titles to your list!"
+              : activeStatusTab === 'COMPLETED'
+              ? "You have not completed any anime or manga yet. Finish watching or reading titles to see them showcase here!"
+              : "No titles match your selected status and filters."}
           </p>
           {onBackToBrowse && (
             <button
@@ -237,16 +369,150 @@ export default function MyListView({
             </button>
           )}
         </div>
+      ) : viewMode === 'grid' ? (
+        
+        /* ─── VISUAL CARDS GRID (SHOWCASING ANIME NAME & IMAGE) ─── */
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 animate-in fade-in duration-200">
+          {filtered.map((entry) => {
+            const title = entry.title?.english || entry.title?.romaji || 'Unknown Title';
+            const cover = entry.coverImage?.large || entry.coverImage?.medium || 'https://via.placeholder.com/300x450?text=No+Cover';
+            const max = entry.type === 'ANIME' ? entry.maxEpisodes : entry.maxChapters;
+            const unit = entry.type === 'ANIME' ? 'eps' : 'chs';
+            const isCompleted = entry.status === TRACKING_STATUS.COMPLETED;
+            const progressNum = parseInt(entry.progress, 10) || 0;
+            const pct = max ? Math.min(100, Math.round((progressNum / max) * 100)) : 100;
+
+            return (
+              <div
+                key={entry.mediaId}
+                className="group relative flex flex-col rounded-2xl overflow-hidden bg-[#151f2e] border border-[#1e293b] hover:border-sky-500/50 transition-all duration-300 hover:shadow-2xl hover:-translate-y-1"
+              >
+                
+                {/* Poster Cover Image */}
+                <div
+                  onClick={() => onSelectMedia(getMediaPayload(entry))}
+                  className="relative aspect-[3/4.2] w-full overflow-hidden cursor-pointer bg-slate-900"
+                >
+                  <img
+                    src={cover}
+                    alt={title}
+                    loading="lazy"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
+                  />
+
+                  {/* Gradient Overlay */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#151f2e] via-transparent to-black/30 opacity-80 group-hover:opacity-90 transition-opacity" />
+
+                  {/* Top Badges: Format & Score */}
+                  <div className="absolute top-2 left-2 right-2 flex items-center justify-between gap-1">
+                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-lg bg-black/70 backdrop-blur text-white tracking-wider">
+                      {entry.format || entry.type}
+                    </span>
+
+                    {entry.score > 0 && (
+                      <span className="flex items-center gap-1 text-[11px] font-extrabold px-2 py-0.5 rounded-lg bg-black/70 backdrop-blur text-amber-400">
+                        <Star className="w-3 h-3 fill-amber-400" />
+                        {entry.score}★
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Bottom Status / Completion Pill */}
+                  <div className="absolute bottom-2 left-2 right-2">
+                    <div className={`px-2 py-1 rounded-lg text-[10px] font-black flex items-center justify-between shadow-lg ${
+                      isCompleted ? 'bg-emerald-500 text-white' : 'bg-sky-500 text-white'
+                    }`}>
+                      <span className="flex items-center gap-1 truncate">
+                        {isCompleted && <Check className="w-3 h-3" />}
+                        {isCompleted 
+                          ? `COMPLETED (${progressNum}/${max || '?'} ${unit})` 
+                          : `${STATUS_LABELS[entry.status]} (${progressNum}/${max || '?'})`}
+                      </span>
+                      {max && <span>{pct}%</span>}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Info & Title */}
+                <div className="p-3 flex flex-col flex-1 justify-between gap-2">
+                  <div>
+                    <h3
+                      onClick={() => onSelectMedia(getMediaPayload(entry))}
+                      title={title}
+                      className="font-bold text-xs sm:text-sm text-slate-100 group-hover:text-sky-400 transition-colors line-clamp-2 cursor-pointer leading-snug"
+                    >
+                      {title}
+                    </h3>
+                    {entry.title?.english && entry.title?.romaji && entry.title.english !== entry.title.romaji && (
+                      <p className="text-[10px] text-slate-500 truncate mt-0.5">{entry.title.romaji}</p>
+                    )}
+                  </div>
+
+                  {/* Progress Bar (Full for Completed) */}
+                  <div>
+                    <div className="h-1.5 w-full rounded-full bg-[#0b1622] overflow-hidden mb-2">
+                      <div
+                        style={{ width: `${pct}%` }}
+                        className={`h-full rounded-full transition-all ${
+                          isCompleted ? 'bg-emerald-500' : 'bg-gradient-to-r from-sky-500 to-indigo-500'
+                        }`}
+                      />
+                    </div>
+
+                    {/* Stepper & Action Controls */}
+                    <div className="flex items-center justify-between pt-1 border-t border-[#1e293b]/60">
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleDecrement(entry)}
+                          disabled={progressNum <= 0}
+                          className="p-1 rounded-md bg-[#0b1622] hover:bg-[#1e293b] text-slate-400 hover:text-white disabled:opacity-30 transition-colors"
+                          title="Decrement (-1)"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="text-[11px] font-black text-white px-1">
+                          {progressNum}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleIncrement(entry)}
+                          disabled={Boolean(max && progressNum >= max)}
+                          className="p-1 rounded-md bg-sky-500 hover:bg-sky-400 text-white disabled:opacity-30 disabled:bg-slate-800 transition-colors"
+                          title="Increment (+1)"
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                      </div>
+
+                      <button
+                        onClick={() => onSelectMedia(getMediaPayload(entry))}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-sky-400 hover:bg-[#0b1622] transition-colors"
+                        title="Open Details & Video Player"
+                      >
+                        <Play className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                </div>
+
+              </div>
+            );
+          })}
+        </div>
       ) : (
-        <div className="bg-[#151f2e] border border-[#1e293b] rounded-2xl overflow-hidden shadow-xl">
+
+        /* ─── CLASSIC TABLE LIST VIEW ─── */
+        <div className="bg-[#151f2e] border border-[#1e293b] rounded-2xl overflow-hidden shadow-xl animate-in fade-in duration-200">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-[#0b1622] text-[11px] font-extrabold uppercase tracking-wider text-slate-400 border-b border-[#1e293b]">
                   <th className="py-3 px-4 w-12 text-center">#</th>
-                  <th className="py-3 px-4">Title</th>
+                  <th className="py-3 px-4">Title & Poster Image</th>
                   <th className="py-3 px-4 w-36 text-center">Status</th>
-                  <th className="py-3 px-4 w-44 text-center">Progress</th>
+                  <th className="py-3 px-4 w-44 text-center">All Episodes</th>
                   <th className="py-3 px-4 w-28 text-center">Score</th>
                   <th className="py-3 px-4 w-24 text-center">Format</th>
                   <th className="py-3 px-4 w-24 text-center">Actions</th>
@@ -258,19 +524,19 @@ export default function MyListView({
                   const max = entry.type === 'ANIME' ? entry.maxEpisodes : entry.maxChapters;
                   const unit = entry.type === 'ANIME' ? 'ep' : 'ch';
                   const isMaxReached = Boolean(max && entry.progress >= max);
+                  const isCompleted = entry.status === TRACKING_STATUS.COMPLETED;
 
                   return (
                     <tr 
                       key={entry.mediaId}
                       className="hover:bg-[#1a2638] transition-colors group"
                     >
-                      
                       {/* Index */}
                       <td className="py-3 px-4 text-center font-bold text-slate-500">
                         {index + 1}
                       </td>
 
-                      {/* Title & Cover */}
+                      {/* Title & Cover Image */}
                       <td className="py-3 px-4">
                         <div 
                           onClick={() => onSelectMedia(getMediaPayload(entry))}
@@ -279,16 +545,21 @@ export default function MyListView({
                           <img
                             src={entry.coverImage?.medium || entry.coverImage?.large}
                             alt={title}
-                            className="w-10 h-14 rounded-lg object-cover bg-slate-800 shadow flex-shrink-0"
+                            className="w-12 h-16 rounded-xl object-cover bg-slate-800 shadow flex-shrink-0 group-hover/title:scale-105 transition-transform"
                           />
                           <div className="overflow-hidden">
                             <span className="font-bold text-sm text-slate-100 group-hover/title:text-sky-400 transition-colors line-clamp-1">
                               {title}
                             </span>
                             <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-400">
-                              <span className="text-[10px] text-slate-400 font-semibold">
+                              <span className="text-[10px] text-slate-400 font-semibold uppercase">
                                 {entry.type}
                               </span>
+                              {isCompleted && (
+                                <span className="text-emerald-400 font-extrabold flex items-center gap-0.5 text-[10px]">
+                                  <Check className="w-3 h-3" /> Full Watched
+                                </span>
+                              )}
                               {entry.notes && (
                                 <span className="italic text-slate-500 truncate max-w-xs">"{entry.notes}"</span>
                               )}
@@ -303,8 +574,8 @@ export default function MyListView({
                           value={entry.status}
                           onChange={(e) => handleStatusChange(entry, e.target.value)}
                           className={`text-[11px] font-bold px-2 py-1 rounded-xl border border-[#1e293b] cursor-pointer focus:outline-none transition-colors ${
-                            entry.status === 'CURRENT' ? 'bg-emerald-500/20 text-emerald-300' :
-                            entry.status === 'COMPLETED' ? 'bg-sky-500/20 text-sky-300' :
+                            entry.status === 'CURRENT' ? 'bg-sky-500/20 text-sky-300' :
+                            entry.status === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-300 font-extrabold' :
                             entry.status === 'PLANNING' ? 'bg-amber-500/20 text-amber-300' :
                             entry.status === 'PAUSED' ? 'bg-orange-500/20 text-orange-300' :
                             'bg-rose-500/20 text-rose-300'
@@ -321,35 +592,27 @@ export default function MyListView({
                       {/* Interactive Progress: [-] [ Input ] [+] */}
                       <td className="py-3 px-4 text-center">
                         <div className="inline-flex items-center gap-1.5 bg-[#0b1622] p-1 rounded-xl border border-[#1e293b]">
-                          
-                          {/* Decrement Button */}
                           <button
                             type="button"
                             onClick={() => handleDecrement(entry)}
                             title="Decrement (-1)"
                             disabled={entry.progress <= 0}
-                            className={`p-1 rounded-lg transition-all ${
-                              entry.progress <= 0
-                                ? 'opacity-30 cursor-not-allowed text-slate-600'
-                                : 'hover:bg-[#1e293b] text-slate-300 hover:text-white'
-                            }`}
+                            className="p-1 rounded-lg text-slate-400 hover:text-white disabled:opacity-30"
                           >
                             <Minus className="w-3.5 h-3.5" />
                           </button>
 
-                          {/* Editable Number Input */}
                           <input
                             type="number"
                             min="0"
                             max={max || 9999}
                             value={entry.progress || 0}
                             onChange={(e) => handleProgressInput(entry, e.target.value)}
-                            className="w-12 text-center bg-transparent font-extrabold text-sm text-white focus:outline-none focus:bg-[#151f2e] rounded"
+                            className="w-12 text-center bg-transparent font-black text-sm text-white focus:outline-none focus:bg-[#151f2e] rounded"
                           />
 
                           <span className="text-slate-400 text-xs pr-1">/ {max || '?'}</span>
 
-                          {/* Increment Button */}
                           <button
                             type="button"
                             onClick={() => handleIncrement(entry)}
@@ -363,7 +626,6 @@ export default function MyListView({
                           >
                             <Plus className="w-3.5 h-3.5" />
                           </button>
-
                         </div>
                       </td>
 
@@ -391,13 +653,13 @@ export default function MyListView({
                         </span>
                       </td>
 
-                      {/* Actions: Edit & Delete */}
+                      {/* Actions */}
                       <td className="py-3 px-4 text-center">
                         <div className="flex items-center justify-center gap-1">
                           <button
                             onClick={() => onSelectMedia(getMediaPayload(entry))}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-sky-400 hover:bg-[#0b1622] transition-colors"
-                            title="Edit details & notes"
+                            title="Open Details & Player"
                           >
                             <Edit3 className="w-3.5 h-3.5" />
                           </button>
@@ -410,7 +672,6 @@ export default function MyListView({
                           </button>
                         </div>
                       </td>
-
                     </tr>
                   );
                 })}
