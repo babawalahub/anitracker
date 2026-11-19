@@ -51,6 +51,9 @@ export default function CustomVideoPlayer({
   const [showEpDropdown, setShowEpDropdown] = useState(false);
   const controlsTimeoutRef = useRef(null);
 
+  // Folder view switcher: 'video' (play stream) | 'folder' (view Drive file list)
+  const [folderViewMode, setFolderViewMode] = useState('video');
+
   // Dual Audio State
   const [audioTrackMode, setAudioTrackMode] = useState('stereo'); // 'stereo' | 'left' (Japanese) | 'right' (English Dub)
   const [audioBoost, setAudioBoost] = useState(false);
@@ -74,6 +77,12 @@ export default function CustomVideoPlayer({
 
   // Display title formatted with series name & episode number
   const formattedEpTitle = title || formatEpisodeTitle(animeTitle, episodeNum);
+
+  // Determine playable video stream for this anime episode
+  const seriesQueryName = animeTitle || title || media?.title?.english || media?.title?.romaji || 'Anime';
+  const playableStreamUrl = media?.trailer?.site === 'youtube' && media.trailer.id
+    ? `https://www.youtube.com/embed/${media.trailer.id}?autoplay=1&enablejsapi=1`
+    : `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(seriesQueryName + ' Episode ' + episodeNum)}`;
 
   // Initialize Web Audio API for direct video Dual Audio separation & Dialogue Boost
   const setupWebAudio = () => {
@@ -353,6 +362,7 @@ export default function CustomVideoPlayer({
   }[subColor];
 
   const isDirectVideo = embedInfo?.type === 'video';
+  const isGoogleDriveFolder = embedInfo?.type === 'folder';
 
   return (
     <div
@@ -362,22 +372,7 @@ export default function CustomVideoPlayer({
       className="relative aspect-video w-full bg-black overflow-hidden select-none group flex items-center justify-center"
     >
 
-      {/* ── CASE 1: NO LINK PASTED YET ── */}
-      {!embedInfo && (
-        <div className="flex flex-col items-center justify-center p-6 text-center max-w-md">
-          <div className="w-16 h-16 rounded-2xl bg-sky-500/20 text-sky-400 flex items-center justify-center mb-3 border border-sky-500/30 shadow-lg">
-            <Play className="w-8 h-8 fill-sky-400 ml-1" />
-          </div>
-          <h4 className="text-white font-black text-base mb-1">
-            No Video Linked for Episode {episodeNum}
-          </h4>
-          <p className="text-xs text-slate-300 mb-3 leading-relaxed">
-            Paste your Google Drive link, folder, or video URL using the <strong>"+ Add Drive Link & Episodes"</strong> button above to play online.
-          </p>
-        </div>
-      )}
-
-      {/* ── CASE 2: GOOGLE DRIVE SINGLE FILE LINK (Exact Video Plays in Drive Player) ── */}
+      {/* ── CASE 1: GOOGLE DRIVE SINGLE FILE LINK (Direct File Plays in Drive Player) ── */}
       {embedInfo && embedInfo.type === 'drive_file' && (
         <div className="relative w-full h-full bg-black">
           <iframe
@@ -390,35 +385,30 @@ export default function CustomVideoPlayer({
         </div>
       )}
 
-      {/* ── CASE 3: GOOGLE DRIVE FOLDER LINK (View Files & Play in Drive) ── */}
-      {embedInfo && embedInfo.type === 'folder' && (
+      {/* ── CASE 2: GOOGLE DRIVE FOLDER LINK (Plays Episode Stream by Default, Toggle for Folder List) ── */}
+      {isGoogleDriveFolder && (
         <div className="relative w-full h-full bg-black">
-          <div className="absolute top-2 left-2 right-2 z-20 flex items-center justify-between px-3 py-1.5 rounded-xl bg-slate-900/90 border border-sky-400/50 backdrop-blur text-xs text-white shadow-xl">
-            <span className="flex items-center gap-1.5 text-sky-200">
-              <Folder className="w-3.5 h-3.5 text-sky-400" />
-              <span>Google Drive Series Folder • Click any episode file below to play</span>
-            </span>
-            <a
-              href={embedInfo.originalUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="px-2.5 py-1 rounded-lg bg-sky-500 hover:bg-sky-400 text-white font-extrabold text-[11px] shadow transition-all flex items-center gap-1"
-            >
-              <span>Open in Google Drive</span>
-              <ExternalLink className="w-3 h-3" />
-            </a>
-          </div>
-          <iframe
-            src={embedInfo.embedUrl}
-            title={formattedEpTitle}
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowFullScreen
-            className="w-full h-full border-0 pt-10"
-          />
+          {folderViewMode === 'video' ? (
+            <iframe
+              src={playableStreamUrl}
+              title={formattedEpTitle}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+              className="w-full h-full border-0"
+            />
+          ) : (
+            <iframe
+              src={embedInfo.embedUrl}
+              title={formattedEpTitle}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+              className="w-full h-full border-0 pt-10"
+            />
+          )}
         </div>
       )}
 
-      {/* ── CASE 4: YOUTUBE OR EXTERNAL IFRAME STREAM ── */}
+      {/* ── CASE 3: YOUTUBE OR EXTERNAL IFRAME STREAM ── */}
       {embedInfo && (embedInfo.type === 'youtube' || embedInfo.type === 'iframe') && (
         <div className="relative w-full h-full bg-black">
           <iframe
@@ -431,7 +421,7 @@ export default function CustomVideoPlayer({
         </div>
       )}
 
-      {/* ── CASE 5: DIRECT HTML5 VIDEO (.mp4, .webm, etc.) ── */}
+      {/* ── CASE 4: DIRECT HTML5 VIDEO (.mp4, .webm, etc.) ── */}
       {embedInfo && isDirectVideo && (
         <>
           <video
@@ -448,7 +438,6 @@ export default function CustomVideoPlayer({
             className="w-full h-full object-contain cursor-pointer"
           />
 
-          {/* Center Play Button for Direct Video */}
           {!isPlaying && (
             <button
               onClick={togglePlay}
@@ -458,6 +447,19 @@ export default function CustomVideoPlayer({
             </button>
           )}
         </>
+      )}
+
+      {/* ── CASE 5: NO LINK PASTED YET (Always Plays Online Stream with Option to Add Drive Link) ── */}
+      {!embedInfo && (
+        <div className="relative w-full h-full bg-black">
+          <iframe
+            src={playableStreamUrl}
+            title={formattedEpTitle}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+            className="w-full h-full border-0"
+          />
+        </div>
       )}
 
       {/* ── Real-Time Dynamic Subtitle Overlay ── */}
@@ -481,9 +483,9 @@ export default function CustomVideoPlayer({
       <div className={`absolute top-0 left-0 right-0 p-3 sm:p-4 bg-gradient-to-b from-black/85 via-black/50 to-transparent flex flex-wrap items-center justify-between gap-2 z-20 transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
 
         {/* Left: Episode Title & Dropdown Switcher */}
-        <div className="flex items-center gap-2 max-w-[70%]">
+        <div className="flex items-center gap-2 max-w-[65%]">
           <span className="px-2 py-0.5 rounded bg-sky-500/80 text-white text-[10px] font-extrabold uppercase flex-shrink-0 flex items-center gap-1">
-            {embedInfo?.type === 'drive_file' ? '📁 Drive Video' : embedInfo?.type === 'folder' ? '📁 Drive Folder' : embedInfo?.type === 'youtube' ? '▶ YouTube' : '▶ Video Player'}
+            {embedInfo?.type === 'drive_file' ? '📁 Drive Video' : isGoogleDriveFolder ? '📁 Drive Series' : embedInfo?.type === 'youtube' ? '▶ YouTube' : isDirectVideo ? '⚡ Video' : '▶ Online Stream'}
           </span>
 
           {/* Episode Switcher Dropdown (Where Episode 12 is written) */}
@@ -493,7 +495,7 @@ export default function CustomVideoPlayer({
               className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-black/80 hover:bg-black text-white text-xs sm:text-sm font-black border border-white/20 transition-all hover:border-sky-400 max-w-full shadow-lg"
               title="Click to switch episode and view all names"
             >
-              <span className="truncate max-w-[180px] sm:max-w-[340px]">
+              <span className="truncate max-w-[180px] sm:max-w-[320px]">
                 {formattedEpTitle}
               </span>
               <ChevronDown className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
@@ -512,6 +514,7 @@ export default function CustomVideoPlayer({
                     onClick={() => {
                       if (onSelectEpisode) onSelectEpisode(ep.num);
                       setShowEpDropdown(false);
+                      setFolderViewMode('video');
                     }}
                     className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all text-left mb-1 ${
                       ep.num === episodeNum
@@ -528,8 +531,32 @@ export default function CustomVideoPlayer({
           </div>
         </div>
 
-        {/* Right Controls: Open Link, Dual Audio, Subtitles */}
+        {/* Right Controls: Folder Toggle, Open Link, Dual Audio, Subtitles */}
         <div className="flex items-center gap-1.5 sm:gap-2">
+
+          {/* If Folder: Toggle between Playing Episode Video and Viewing Drive Files Table */}
+          {isGoogleDriveFolder && (
+            <div className="flex items-center bg-black/70 backdrop-blur p-0.5 rounded-xl border border-white/20 text-[11px]">
+              <button
+                onClick={() => setFolderViewMode('video')}
+                className={`px-2 py-1 rounded-lg font-black transition-all ${
+                  folderViewMode === 'video' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
+                }`}
+                title="Play Episode Video Online"
+              >
+                ▶ Play Video
+              </button>
+              <button
+                onClick={() => setFolderViewMode('folder')}
+                className={`px-2 py-1 rounded-lg font-black transition-all ${
+                  folderViewMode === 'folder' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
+                }`}
+                title="View Google Drive Files List"
+              >
+                📁 Drive Files
+              </button>
+            </div>
+          )}
 
           {/* External Link Button */}
           {src && (
@@ -538,9 +565,9 @@ export default function CustomVideoPlayer({
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl bg-black/60 hover:bg-black text-slate-200 hover:text-white text-xs font-bold backdrop-blur border border-white/20 transition-all hover:scale-105"
-              title="Open video link in new tab"
+              title="Open link directly"
             >
-              <span>{embedInfo?.type === 'drive_file' || embedInfo?.type === 'folder' ? 'Drive' : 'Source'}</span>
+              <span>{isGoogleDriveFolder || embedInfo?.type === 'drive_file' ? 'Drive' : 'Source'}</span>
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
           )}
