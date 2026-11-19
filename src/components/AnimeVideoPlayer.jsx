@@ -368,6 +368,17 @@ export default function AnimeVideoPlayer({
                 />
               </div>
 
+              <div className="bg-[#111c2e] p-3 rounded-2xl border border-[#1e293b] text-xs space-y-1.5 text-slate-300">
+                <p className="font-bold text-sky-400 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>How to play videos with Subtitles & Dual Audio:</span>
+                </p>
+                <p className="text-[11px] leading-relaxed">
+                  • <strong>Google Drive Folder:</strong> Paste your folder link above to connect all episodes in 1 click.<br />
+                  • <strong>Direct Episode Video:</strong> Paste your episode file links (e.g. <code className="text-sky-300">https://drive.google.com/file/d/.../view</code>) in the box above so each episode plays in the integrated HD player with real-time subtitles and translation!
+                </p>
+              </div>
+
               <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                 <p className="text-[11px] text-slate-400">
                   ✨ Generates all episodes in the playlist and immediately launches <strong>Episode 1 in the Integrated Player with Subtitles</strong>.
@@ -421,6 +432,17 @@ export default function AnimeVideoPlayer({
                     className="w-full bg-[#151f2e] border border-[#1e293b] rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
                   />
                 </div>
+              </div>
+
+              <div className="bg-[#111c2e] p-3 rounded-2xl border border-[#1e293b] text-xs space-y-1.5 text-slate-300">
+                <p className="font-bold text-sky-400 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>How to play videos with Subtitles & Dual Audio:</span>
+                </p>
+                <p className="text-[11px] leading-relaxed">
+                  • <strong>Google Drive Folder:</strong> Paste your folder link above to connect all episodes in 1 click.<br />
+                  • <strong>Direct Episode Video:</strong> Paste your episode file links (e.g. <code className="text-sky-300">https://drive.google.com/file/d/.../view</code>) in the box above so each episode plays in the integrated HD player with real-time subtitles and translation!
+                </p>
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-2 pt-1">

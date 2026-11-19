@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import {
-  Play, Pause, Volume2, VolumeX, Maximize2, Minimize2,
-  Settings, Globe, Languages, Sliders, RefreshCw, Upload,
-  Download, Check, Sparkles, AlertCircle, Headphones,
+import { 
+  Play, Pause, Volume2, VolumeX, Maximize2, Minimize2, 
+  Settings, Globe, Languages, Sliders, RefreshCw, Upload, 
+  Download, Check, Sparkles, AlertCircle, Headphones, 
   ExternalLink, MessageSquare, FastForward, Rewind, Eye, EyeOff,
-  ChevronDown
+  ChevronDown, Folder
 } from 'lucide-react';
 import {
   SUPPORTED_LANGUAGES,
@@ -428,14 +428,22 @@ export default function CustomVideoPlayer({
         </div>
       )}
 
-      {/* ── Center Big Play / Pause Flash Button ── */}
-      {!isPlaying && (
+      {/* ── Center Big Play / Pause Flash Button (Only for direct video, not folder view) ── */}
+      {!isPlaying && !isGoogleDriveFolder && (
         <button
           onClick={togglePlay}
           className="absolute z-10 w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-sky-500/90 text-white flex items-center justify-center shadow-2xl backdrop-blur transition-all hover:scale-110 hover:bg-sky-400 group-hover:flex"
         >
           <Play className="w-8 h-8 sm:w-10 sm:h-10 fill-white ml-1" />
         </button>
+      )}
+
+      {/* ── Folder Play Helper Hint ── */}
+      {isGoogleDriveFolder && (
+        <div className="absolute top-16 left-4 z-20 pointer-events-none flex items-center gap-2 bg-sky-950/90 border border-sky-400/50 backdrop-blur px-3.5 py-1.5 rounded-xl text-xs font-black text-white shadow-xl animate-in fade-in slide-in-from-top-2 duration-300">
+          <Play className="w-3.5 h-3.5 fill-sky-400 text-sky-400" />
+          <span>Click any episode file below to play video with subtitles!</span>
+        </div>
       )}
 
       {/* ── Translation In-Progress Toast ── */}
@@ -572,7 +580,7 @@ export default function CustomVideoPlayer({
           {/* Subtitles & Translation Menu Button */}
           <div className="relative">
             <button
-              onClick={() => { setShowSubMenu(!showSubMenu); setShowAudioMenu(false); }}
+              onClick={() => { setShowSubMenu(!showSubMenu); setShowAudioMenu(!false ? false : false); }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black backdrop-blur transition-all border ${subtitlesEnabled
                   ? 'bg-sky-500 text-white border-sky-400 shadow-md shadow-sky-500/30'
                   : 'bg-black/60 text-slate-400 border-white/20 hover:bg-black/80'
@@ -709,6 +717,20 @@ export default function CustomVideoPlayer({
             )}
           </div>
 
+          {/* Direct Open in Drive Button */}
+          {isGoogleDrive && (
+            <a
+              href={src}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-black/60 hover:bg-black text-slate-200 hover:text-white text-xs font-bold backdrop-blur border border-white/20 transition-all hover:scale-105"
+              title="Open directly in Google Drive"
+            >
+              <span>Drive</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          )}
+
         </div>
 
       </div>
@@ -716,22 +738,32 @@ export default function CustomVideoPlayer({
       {/* ── Bottom Controls Bar ── */}
       <div className={`absolute bottom-0 left-0 right-0 p-3 sm:p-4 bg-gradient-to-t from-black/90 via-black/50 to-transparent z-20 transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
 
-        {/* Progress / Scrub Bar */}
-        <div
-          onClick={handleSeek}
-          className="relative w-full h-1.5 sm:h-2 bg-slate-800/80 rounded-full cursor-pointer group/bar mb-3 overflow-hidden"
-        >
-          {/* Buffered Progress */}
+        {/* Progress / Scrub Bar (Or Folder Info) */}
+        {isGoogleDriveFolder ? (
+          <div className="flex items-center justify-between text-xs text-sky-300 font-bold bg-[#0b1622]/90 backdrop-blur px-3 py-1.5 rounded-xl border border-sky-500/30 mb-2">
+            <div className="flex items-center gap-2">
+              <Folder className="w-4 h-4 text-sky-400" />
+              <span>Drive Series Folder ({episodesList?.length || 12} Episodes Connected)</span>
+            </div>
+            <span className="text-[11px] text-slate-300 hidden sm:inline">Click any video file below to play</span>
+          </div>
+        ) : (
           <div
-            style={{ width: `${duration ? (buffered / duration) * 100 : 0}%` }}
-            className="absolute top-0 bottom-0 left-0 bg-slate-600/60 rounded-full"
-          />
-          {/* Current Played Progress */}
-          <div
-            style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
-            className="absolute top-0 bottom-0 left-0 bg-sky-500 rounded-full shadow-lg shadow-sky-500/50"
-          />
-        </div>
+            onClick={handleSeek}
+            className="relative w-full h-1.5 sm:h-2 bg-slate-800/80 rounded-full cursor-pointer group/bar mb-3 overflow-hidden"
+          >
+            {/* Buffered Progress */}
+            <div
+              style={{ width: `${duration ? (buffered / duration) * 100 : 0}%` }}
+              className="absolute top-0 bottom-0 left-0 bg-slate-600/60 rounded-full"
+            />
+            {/* Current Played Progress */}
+            <div
+              style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
+              className="absolute top-0 bottom-0 left-0 bg-sky-500 rounded-full shadow-lg shadow-sky-500/50"
+            />
+          </div>
+        )}
 
         {/* Buttons Row */}
         <div className="flex items-center justify-between text-white text-xs sm:text-sm">
