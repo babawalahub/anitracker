@@ -1,13 +1,5 @@
 // Helper to parse, transform, and detect video links (Google Drive, YouTube, MP4, etc.)
 
-// Verified, high-quality audio/video streams for integrated HTML5 player
-export const DEFAULT_PRO_VIDEO_STREAMS = [
-  'https://media.w3.org/2010/05/sintel/trailer.mp4',
-  'https://media.w3.org/2010/05/bunny/trailer.mp4',
-  'https://raw.githubusercontent.com/bower-media-samples/big-buck-bunny-480p-30s/master/video.mp4',
-  'https://www.w3schools.com/html/mov_bbb.mp4'
-];
-
 export function cleanUrl(rawUrl) {
   if (!rawUrl || typeof rawUrl !== 'string') return '';
   let url = rawUrl.trim();
@@ -36,22 +28,6 @@ export function formatEpisodeTitle(seriesName, episodeNum, customTitle) {
   }
   const cleanSeries = seriesName ? seriesName.trim() : 'Anime';
   return `${cleanSeries} - S01E${epStr}`;
-}
-
-// Return a guaranteed playable direct video stream for the episode
-export function getEpisodeVideoStream(url, episodeNum = 1, media = null) {
-  const cleaned = cleanUrl(url);
-
-  // 1. If direct playable video file (mp4, webm, m3u8)
-  if (cleaned && /\.(mp4|webm|ogg|m3u8)(\?.*)?$/i.test(cleaned)) {
-    return cleaned;
-  }
-
-  // 2. If it is a Google Drive folder or generic/empty
-  // A folder CANNOT be played directly as a video file in an HTML5 video tag!
-  // So we supply a high-quality playable video stream with audio & dialog
-  const idx = (Math.max(1, episodeNum) - 1) % DEFAULT_PRO_VIDEO_STREAMS.length;
-  return DEFAULT_PRO_VIDEO_STREAMS[idx];
 }
 
 export function formatEmbedUrl(rawUrl) {
@@ -90,7 +66,7 @@ export function formatEmbedUrl(rawUrl) {
     if (fileIdMatch && fileIdMatch[1]) {
       const fileId = fileIdMatch[1];
       return {
-        type: 'iframe',
+        type: 'drive_file',
         embedUrl: `https://drive.google.com/file/d/${fileId}/preview`,
         originalUrl: url,
         fileId,
@@ -105,15 +81,15 @@ export function formatEmbedUrl(rawUrl) {
     const ytMatch = url.match(/(?:youtu\.be\/|watch\?v=|embed\/)([a-zA-Z0-9_-]+)/);
     if (ytMatch && ytMatch[1]) {
       return {
-        type: 'iframe',
-        embedUrl: `https://www.youtube.com/embed/${ytMatch[1]}`,
+        type: 'youtube',
+        embedUrl: `https://www.youtube.com/embed/${ytMatch[1]}?autoplay=1`,
         originalUrl: url,
         source: 'YouTube'
       };
     }
   }
 
-  // 4. Direct HTML5 Video (.mp4, .webm, .ogg, .m3u8, .mkv)
+  // 4. Direct HTML5 Video (.mp4, .webm, .ogg, .m3u8)
   const isDirectVideo = /\.(mp4|webm|ogg|m3u8)(\?.*)?$/i.test(url);
   if (isDirectVideo) {
     return {

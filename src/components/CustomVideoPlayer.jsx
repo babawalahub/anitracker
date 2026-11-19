@@ -4,7 +4,7 @@ import {
   Settings, Globe, Languages, Sliders, RefreshCw, Upload, 
   Download, Check, Sparkles, AlertCircle, Headphones, 
   ExternalLink, MessageSquare, FastForward, Rewind, Eye, EyeOff,
-  ChevronDown, Folder, Tv, ShieldAlert
+  ChevronDown, Folder, Tv
 } from 'lucide-react';
 import {
   SUPPORTED_LANGUAGES,
@@ -13,7 +13,6 @@ import {
   translateCues
 } from '../services/subtitleService';
 import {
-  getEpisodeVideoStream,
   formatEpisodeTitle,
   formatEmbedUrl,
   cleanUrl
@@ -39,10 +38,7 @@ export default function CustomVideoPlayer({
   const mergerRef = useRef(null);
   const gainNodeRef = useRef(null);
 
-  // Player Modes: 'pro' (Integrated HTML5 with Dual Audio & Subs) | 'drive' (Google Drive Embed) | 'server' (Anime Server)
-  const [playerMode, setPlayerMode] = useState('pro');
-
-  // Playback State
+  // Playback State (for direct HTML5 video)
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -73,41 +69,15 @@ export default function CustomVideoPlayer({
   const [subFontSize, setSubFontSize] = useState('medium'); // 'small' | 'medium' | 'large'
   const [subColor, setSubColor] = useState('yellow'); // 'yellow' | 'white' | 'cyan'
 
-  // Resolve Drive links
-  const folderMatch = src ? (
-    src.match(/\/folders\/([a-zA-Z0-9_-]+)/) ||
-    (src.includes('folder') && src.match(/[?&]id=([a-zA-Z0-9_-]+)/))
-  ) : null;
+  // Parse what kind of video link the user provided
+  const embedInfo = formatEmbedUrl(src);
 
-  const fileIdMatch = !folderMatch && src ? (
-    src.match(/\/file\/(?:u\/\d+\/)?d\/([a-zA-Z0-9_-]+)/) ||
-    src.match(/[?&]id=([a-zA-Z0-9_-]+)/) ||
-    src.match(/\/d\/([a-zA-Z0-9_-]+)/)
-  ) : null;
+  // Display title formatted with series name & episode number
+  const formattedEpTitle = title || formatEpisodeTitle(animeTitle, episodeNum);
 
-  const isGoogleDriveFolder = Boolean(folderMatch);
-  const isGoogleDrive = Boolean(isGoogleDriveFolder || fileIdMatch || (src && src.includes('drive.google.com')));
-
-  let googleDriveEmbedUrl = null;
-  if (isGoogleDriveFolder) {
-    googleDriveEmbedUrl = `https://drive.google.com/embeddedfolderview?id=${folderMatch[1]}#list`;
-  } else if (fileIdMatch) {
-    googleDriveEmbedUrl = `https://drive.google.com/file/d/${fileIdMatch[1]}/preview`;
-  } else if (src && src.includes('drive.google.com')) {
-    googleDriveEmbedUrl = src;
-  }
-
-  // Get guaranteed working HTML5 video stream for this episode
-  const activeVideoStream = getEpisodeVideoStream(src, episodeNum, media);
-
-  // Online anime server embed URL
-  const animeServerEmbedUrl = media?.trailer?.site === 'youtube' && media?.trailer?.id
-    ? `https://www.youtube.com/embed/${media.trailer.id}?autoplay=1`
-    : `https://vidsrc.cc/v2/embed/anime/${media?.id || 144188}/${episodeNum || 1}`;
-
-  // Initialize Web Audio API for Dual Audio separation & Dialogue Boost
+  // Initialize Web Audio API for direct video Dual Audio separation & Dialogue Boost
   const setupWebAudio = () => {
-    if (!videoRef.current || audioContextRef.current || playerMode !== 'pro') return;
+    if (!videoRef.current || audioContextRef.current) return;
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       const ctx = new AudioCtx();
@@ -146,15 +116,12 @@ export default function CustomVideoPlayer({
       splitter.disconnect();
 
       if (mode === 'left') {
-        // Japanese: Route Left channel to both Left and Right speakers
         splitter.connect(merger, 0, 0);
         splitter.connect(merger, 0, 1);
       } else if (mode === 'right') {
-        // English Dub: Route Right channel to both Left and Right speakers
         splitter.connect(merger, 1, 0);
         splitter.connect(merger, 1, 1);
       } else {
-        // Normal Stereo: Left to Left, Right to Right
         splitter.connect(merger, 0, 0);
         splitter.connect(merger, 1, 1);
       }
@@ -254,19 +221,17 @@ export default function CustomVideoPlayer({
     reader.readAsText(file);
   };
 
-  // Video Time Update: Calculate Active Subtitle Cue
+  // Video Time Update (for HTML5 video)
   const handleVideoTimeUpdate = () => {
     if (!videoRef.current) return;
     const time = videoRef.current.currentTime;
     setCurrentTime(time);
     if (onTimeUpdate) onTimeUpdate(time);
 
-    // Calculate buffer
     if (videoRef.current.buffered.length > 0) {
       setBuffered(videoRef.current.buffered.end(videoRef.current.buffered.length - 1));
     }
 
-    // Match active subtitle cue
     if (!subtitlesEnabled || currentCues.length === 0) {
       setActiveCueText('');
       return;
@@ -277,7 +242,7 @@ export default function CustomVideoPlayer({
     setActiveCueText(activeCue ? activeCue.text : '');
   };
 
-  // Play / Pause Toggle
+  // Play / Pause Toggle for HTML5 video
   const togglePlay = () => {
     if (!videoRef.current) return;
     setupWebAudio();
@@ -291,7 +256,7 @@ export default function CustomVideoPlayer({
     }
   };
 
-  // Seek Handler
+  // Seek Handler for HTML5 video
   const handleSeek = (e) => {
     if (!videoRef.current || !duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -301,7 +266,7 @@ export default function CustomVideoPlayer({
     setCurrentTime(newTime);
   };
 
-  // Volume Handler
+  // Volume Handler for HTML5 video
   const handleVolumeChange = (e) => {
     const val = parseFloat(e.target.value);
     setVolume(val);
@@ -334,15 +299,15 @@ export default function CustomVideoPlayer({
     const handleKeyDown = (e) => {
       if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
 
-      if (e.code === 'Space') {
+      if (e.code === 'Space' && embedInfo?.type === 'video') {
         e.preventDefault();
         togglePlay();
-      } else if (e.code === 'ArrowRight') {
+      } else if (e.code === 'ArrowRight' && videoRef.current) {
         e.preventDefault();
-        if (videoRef.current) videoRef.current.currentTime += 5;
-      } else if (e.code === 'ArrowLeft') {
+        videoRef.current.currentTime += 5;
+      } else if (e.code === 'ArrowLeft' && videoRef.current) {
         e.preventDefault();
-        if (videoRef.current) videoRef.current.currentTime -= 5;
+        videoRef.current.currentTime -= 5;
       } else if (e.code === 'KeyF') {
         e.preventDefault();
         toggleFullscreen();
@@ -357,7 +322,7 @@ export default function CustomVideoPlayer({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, isMuted]);
+  }, [isPlaying, isMuted, embedInfo]);
 
   // Hide Controls on Inactivity
   const handleMouseMove = () => {
@@ -387,8 +352,7 @@ export default function CustomVideoPlayer({
     cyan: 'text-sky-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]'
   }[subColor];
 
-  // Display title formatted with episode number
-  const formattedEpTitle = title || formatEpisodeTitle(animeTitle, episodeNum);
+  const isDirectVideo = embedInfo?.type === 'video';
 
   return (
     <div
@@ -398,56 +362,55 @@ export default function CustomVideoPlayer({
       className="relative aspect-video w-full bg-black overflow-hidden select-none group flex items-center justify-center"
     >
 
-      {/* ── MODE 1: PRO PLAYER (HTML5 Video with Dual Audio & Subtitles) ── */}
-      {playerMode === 'pro' && (
-        <video
-          ref={videoRef}
-          src={activeVideoStream}
-          poster={poster}
-          playsInline
-          onPlay={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
-          onTimeUpdate={handleVideoTimeUpdate}
-          onLoadedMetadata={() => setDuration(videoRef.current?.duration || 0)}
-          onEnded={onEnded}
-          onClick={togglePlay}
-          className="w-full h-full object-contain cursor-pointer"
-        />
+      {/* ── CASE 1: NO LINK PASTED YET ── */}
+      {!embedInfo && (
+        <div className="flex flex-col items-center justify-center p-6 text-center max-w-md">
+          <div className="w-16 h-16 rounded-2xl bg-sky-500/20 text-sky-400 flex items-center justify-center mb-3 border border-sky-500/30 shadow-lg">
+            <Play className="w-8 h-8 fill-sky-400 ml-1" />
+          </div>
+          <h4 className="text-white font-black text-base mb-1">
+            No Video Linked for Episode {episodeNum}
+          </h4>
+          <p className="text-xs text-slate-300 mb-3 leading-relaxed">
+            Paste your Google Drive link, folder, or video URL using the <strong>"+ Add Drive Link & Episodes"</strong> button above to play online.
+          </p>
+        </div>
       )}
 
-      {/* ── MODE 2: GOOGLE DRIVE EMBED (Interactive, No Blocking Overlay) ── */}
-      {playerMode === 'drive' && (
-        <div className="relative w-full h-full">
-          {/* Helpful 403 Warning & Instant Pro Player Switcher */}
-          <div className="absolute top-2 left-2 right-2 z-30 flex items-center justify-between px-3 py-1.5 rounded-xl bg-slate-900/90 border border-sky-400/50 backdrop-blur text-xs text-white shadow-xl">
+      {/* ── CASE 2: GOOGLE DRIVE SINGLE FILE LINK (Exact Video Plays in Drive Player) ── */}
+      {embedInfo && embedInfo.type === 'drive_file' && (
+        <div className="relative w-full h-full bg-black">
+          <iframe
+            src={embedInfo.embedUrl}
+            title={formattedEpTitle}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+            className="w-full h-full border-0"
+          />
+        </div>
+      )}
+
+      {/* ── CASE 3: GOOGLE DRIVE FOLDER LINK (View Files & Play in Drive) ── */}
+      {embedInfo && embedInfo.type === 'folder' && (
+        <div className="relative w-full h-full bg-black">
+          <div className="absolute top-2 left-2 right-2 z-20 flex items-center justify-between px-3 py-1.5 rounded-xl bg-slate-900/90 border border-sky-400/50 backdrop-blur text-xs text-white shadow-xl">
             <span className="flex items-center gap-1.5 text-sky-200">
               <Folder className="w-3.5 h-3.5 text-sky-400" />
-              <span>Google Drive Files View</span>
+              <span>Google Drive Series Folder • Click any episode file below to play</span>
             </span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setPlayerMode('pro')}
-                className="px-2.5 py-1 rounded-lg bg-sky-500 hover:bg-sky-400 text-white font-extrabold text-[11px] shadow transition-all flex items-center gap-1"
-              >
-                <Sparkles className="w-3 h-3" />
-                <span>Play in Pro Player (Subs & Audio)</span>
-              </button>
-              {googleDriveEmbedUrl && (
-                <a
-                  href={src}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-2.5 py-1 rounded-lg bg-black/60 hover:bg-black text-slate-300 text-[11px] font-bold border border-white/20 flex items-center gap-1"
-                >
-                  <span>Open in Drive</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              )}
-            </div>
+            <a
+              href={embedInfo.originalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2.5 py-1 rounded-lg bg-sky-500 hover:bg-sky-400 text-white font-extrabold text-[11px] shadow transition-all flex items-center gap-1"
+            >
+              <span>Open in Google Drive</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
           </div>
           <iframe
-            src={googleDriveEmbedUrl}
-            title={title}
+            src={embedInfo.embedUrl}
+            title={formattedEpTitle}
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
             className="w-full h-full border-0 pt-10"
@@ -455,34 +418,55 @@ export default function CustomVideoPlayer({
         </div>
       )}
 
-      {/* ── MODE 3: ONLINE ANIME SERVER EMBED ── */}
-      {playerMode === 'server' && (
-        <iframe
-          src={animeServerEmbedUrl}
-          title={title}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          allowFullScreen
-          className="w-full h-full border-0"
-        />
+      {/* ── CASE 4: YOUTUBE OR EXTERNAL IFRAME STREAM ── */}
+      {embedInfo && (embedInfo.type === 'youtube' || embedInfo.type === 'iframe') && (
+        <div className="relative w-full h-full bg-black">
+          <iframe
+            src={embedInfo.embedUrl}
+            title={formattedEpTitle}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+            className="w-full h-full border-0"
+          />
+        </div>
       )}
 
-      {/* ── Real-Time Dynamic Subtitle Overlay (Pro Player) ── */}
-      {playerMode === 'pro' && subtitlesEnabled && activeCueText && (
+      {/* ── CASE 5: DIRECT HTML5 VIDEO (.mp4, .webm, etc.) ── */}
+      {embedInfo && isDirectVideo && (
+        <>
+          <video
+            ref={videoRef}
+            src={embedInfo.embedUrl}
+            poster={poster}
+            playsInline
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
+            onTimeUpdate={handleVideoTimeUpdate}
+            onLoadedMetadata={() => setDuration(videoRef.current?.duration || 0)}
+            onEnded={onEnded}
+            onClick={togglePlay}
+            className="w-full h-full object-contain cursor-pointer"
+          />
+
+          {/* Center Play Button for Direct Video */}
+          {!isPlaying && (
+            <button
+              onClick={togglePlay}
+              className="absolute z-10 w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-sky-500/90 text-white flex items-center justify-center shadow-2xl backdrop-blur transition-all hover:scale-110 hover:bg-sky-400 group-hover:flex"
+            >
+              <Play className="w-8 h-8 sm:w-10 sm:h-10 fill-white ml-1" />
+            </button>
+          )}
+        </>
+      )}
+
+      {/* ── Real-Time Dynamic Subtitle Overlay ── */}
+      {subtitlesEnabled && activeCueText && (
         <div className="absolute bottom-16 sm:bottom-20 left-4 right-4 z-20 flex justify-center pointer-events-none transition-all duration-150">
           <div className={`${fontClasses} ${colorClasses} font-black text-center bg-black/75 backdrop-blur-sm rounded-xl max-w-3xl leading-snug shadow-2xl border border-white/10 animate-in fade-in zoom-in-95 duration-100`}>
             {activeCueText}
           </div>
         </div>
-      )}
-
-      {/* ── Center Big Play / Pause Button (Pro Player Mode Only) ── */}
-      {playerMode === 'pro' && !isPlaying && (
-        <button
-          onClick={togglePlay}
-          className="absolute z-10 w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-sky-500/90 text-white flex items-center justify-center shadow-2xl backdrop-blur transition-all hover:scale-110 hover:bg-sky-400 group-hover:flex"
-        >
-          <Play className="w-8 h-8 sm:w-10 sm:h-10 fill-white ml-1" />
-        </button>
       )}
 
       {/* ── Translation In-Progress Toast ── */}
@@ -497,10 +481,9 @@ export default function CustomVideoPlayer({
       <div className={`absolute top-0 left-0 right-0 p-3 sm:p-4 bg-gradient-to-b from-black/85 via-black/50 to-transparent flex flex-wrap items-center justify-between gap-2 z-20 transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
 
         {/* Left: Episode Title & Dropdown Switcher */}
-        <div className="flex items-center gap-2 max-w-[65%]">
+        <div className="flex items-center gap-2 max-w-[70%]">
           <span className="px-2 py-0.5 rounded bg-sky-500/80 text-white text-[10px] font-extrabold uppercase flex-shrink-0 flex items-center gap-1">
-            <Sparkles className="w-3 h-3" />
-            <span>Pro Player</span>
+            {embedInfo?.type === 'drive_file' ? '📁 Drive Video' : embedInfo?.type === 'folder' ? '📁 Drive Folder' : embedInfo?.type === 'youtube' ? '▶ YouTube' : '▶ Video Player'}
           </span>
 
           {/* Episode Switcher Dropdown (Where Episode 12 is written) */}
@@ -529,7 +512,6 @@ export default function CustomVideoPlayer({
                     onClick={() => {
                       if (onSelectEpisode) onSelectEpisode(ep.num);
                       setShowEpDropdown(false);
-                      setPlayerMode('pro');
                     }}
                     className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all text-left mb-1 ${
                       ep.num === episodeNum
@@ -546,115 +528,98 @@ export default function CustomVideoPlayer({
           </div>
         </div>
 
-        {/* Right Controls: Mode Toggle, Dual Audio, Subtitles */}
+        {/* Right Controls: Open Link, Dual Audio, Subtitles */}
         <div className="flex items-center gap-1.5 sm:gap-2">
 
-          {/* Mode Switcher Pill */}
-          <div className="flex items-center bg-black/60 backdrop-blur p-0.5 rounded-xl border border-white/20 text-[11px]">
-            <button
-              onClick={() => setPlayerMode('pro')}
-              className={`px-2 py-1 rounded-lg font-extrabold transition-all ${
-                playerMode === 'pro' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
-              }`}
-              title="Pro HTML5 Player with Subtitles & Dual Audio"
+          {/* External Link Button */}
+          {src && (
+            <a
+              href={src}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl bg-black/60 hover:bg-black text-slate-200 hover:text-white text-xs font-bold backdrop-blur border border-white/20 transition-all hover:scale-105"
+              title="Open video link in new tab"
             >
-              ⚡ Pro
-            </button>
-            {isGoogleDrive && (
+              <span>{embedInfo?.type === 'drive_file' || embedInfo?.type === 'folder' ? 'Drive' : 'Source'}</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          )}
+
+          {/* Dual Audio Switcher Button (Direct Video Only) */}
+          {isDirectVideo && (
+            <div className="relative">
               <button
-                onClick={() => setPlayerMode('drive')}
-                className={`px-2 py-1 rounded-lg font-extrabold transition-all ${
-                  playerMode === 'drive' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
+                onClick={() => { setShowAudioMenu(!showAudioMenu); setShowSubMenu(false); }}
+                className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-black backdrop-blur transition-all border ${
+                  audioTrackMode !== 'stereo' || audioBoost
+                    ? 'bg-indigo-600 text-white border-indigo-400 shadow-md shadow-indigo-600/30'
+                    : 'bg-black/60 text-slate-200 border-white/20 hover:bg-black/80'
                 }`}
-                title="Google Drive Files View"
+                title="Dual Audio Switcher (Japanese / English Dub)"
               >
-                📁 Drive
+                <Headphones className="w-3.5 h-3.5" />
+                <span className="hidden md:inline">
+                  {audioTrackMode === 'left' ? '🇯🇵 Japanese' : audioTrackMode === 'right' ? '🇺🇸 English Dub' : 'Dual Audio'}
+                </span>
               </button>
-            )}
-            <button
-              onClick={() => setPlayerMode('server')}
-              className={`px-2 py-1 rounded-lg font-extrabold transition-all ${
-                playerMode === 'server' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
-              }`}
-              title="Online Anime Server"
-            >
-              🌐 Server
-            </button>
-          </div>
 
-          {/* Dual Audio Switcher Button */}
-          <div className="relative">
-            <button
-              onClick={() => { setShowAudioMenu(!showAudioMenu); setShowSubMenu(false); }}
-              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-black backdrop-blur transition-all border ${
-                audioTrackMode !== 'stereo' || audioBoost
-                  ? 'bg-indigo-600 text-white border-indigo-400 shadow-md shadow-indigo-600/30'
-                  : 'bg-black/60 text-slate-200 border-white/20 hover:bg-black/80'
-              }`}
-              title="Dual Audio Switcher (Japanese / English Dub)"
-            >
-              <Headphones className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">
-                {audioTrackMode === 'left' ? '🇯🇵 Japanese' : audioTrackMode === 'right' ? '🇺🇸 English Dub' : 'Dual Audio'}
-              </span>
-            </button>
+              {/* Audio Dropdown Menu */}
+              {showAudioMenu && (
+                <div className="absolute right-0 top-10 w-64 bg-[#0b1622] border border-[#1e293b] rounded-2xl p-3 shadow-2xl z-40 text-slate-200 animate-in fade-in duration-150">
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#1e293b]">
+                    <h4 className="text-xs font-black text-white flex items-center gap-1.5">
+                      <Headphones className="w-4 h-4 text-indigo-400" />
+                      <span>Dual Audio Tracks</span>
+                    </h4>
+                    <span className="text-[10px] text-slate-400 font-semibold">Web Audio</span>
+                  </div>
 
-            {/* Audio Dropdown Menu */}
-            {showAudioMenu && (
-              <div className="absolute right-0 top-10 w-64 bg-[#0b1622] border border-[#1e293b] rounded-2xl p-3 shadow-2xl z-40 text-slate-200 animate-in fade-in duration-150">
-                <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#1e293b]">
-                  <h4 className="text-xs font-black text-white flex items-center gap-1.5">
-                    <Headphones className="w-4 h-4 text-indigo-400" />
-                    <span>Dual Audio Tracks</span>
-                  </h4>
-                  <span className="text-[10px] text-slate-400 font-semibold">Web Audio</span>
+                  <div className="space-y-1">
+                    <button
+                      onClick={() => setAudioChannel('stereo')}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                        audioTrackMode === 'stereo' ? 'bg-indigo-600 text-white' : 'hover:bg-[#151f2e] text-slate-300'
+                      }`}
+                    >
+                      <span>Balanced Stereo</span>
+                      {audioTrackMode === 'stereo' && <Check className="w-3.5 h-3.5" />}
+                    </button>
+                    <button
+                      onClick={() => setAudioChannel('left')}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                        audioTrackMode === 'left' ? 'bg-indigo-600 text-white' : 'hover:bg-[#151f2e] text-slate-300'
+                      }`}
+                    >
+                      <span>🇯🇵 Japanese Track (Audio 1)</span>
+                      {audioTrackMode === 'left' && <Check className="w-3.5 h-3.5" />}
+                    </button>
+                    <button
+                      onClick={() => setAudioChannel('right')}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                        audioTrackMode === 'right' ? 'bg-indigo-600 text-white' : 'hover:bg-[#151f2e] text-slate-300'
+                      }`}
+                    >
+                      <span>🇺🇸 English Dub Track (Audio 2)</span>
+                      {audioTrackMode === 'right' && <Check className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+
+                  {/* Vocal Dialogue Boost */}
+                  <div className="pt-2 mt-2 border-t border-[#1e293b]">
+                    <button
+                      onClick={toggleAudioBoost}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                        audioBoost ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-[#151f2e] text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <span>Dialogue Vocal Boost</span>
+                      <span>{audioBoost ? 'ON (+6dB)' : 'OFF'}</span>
+                    </button>
+                  </div>
                 </div>
-
-                <div className="space-y-1">
-                  <button
-                    onClick={() => setAudioChannel('stereo')}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-                      audioTrackMode === 'stereo' ? 'bg-indigo-600 text-white' : 'hover:bg-[#151f2e] text-slate-300'
-                    }`}
-                  >
-                    <span>Balanced Stereo</span>
-                    {audioTrackMode === 'stereo' && <Check className="w-3.5 h-3.5" />}
-                  </button>
-                  <button
-                    onClick={() => setAudioChannel('left')}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-                      audioTrackMode === 'left' ? 'bg-indigo-600 text-white' : 'hover:bg-[#151f2e] text-slate-300'
-                    }`}
-                  >
-                    <span>🇯🇵 Japanese Track (Audio 1)</span>
-                    {audioTrackMode === 'left' && <Check className="w-3.5 h-3.5" />}
-                  </button>
-                  <button
-                    onClick={() => setAudioChannel('right')}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-                      audioTrackMode === 'right' ? 'bg-indigo-600 text-white' : 'hover:bg-[#151f2e] text-slate-300'
-                    }`}
-                  >
-                    <span>🇺🇸 English Dub Track (Audio 2)</span>
-                    {audioTrackMode === 'right' && <Check className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-
-                {/* Vocal Dialogue Boost */}
-                <div className="pt-2 mt-2 border-t border-[#1e293b]">
-                  <button
-                    onClick={toggleAudioBoost}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all ${
-                      audioBoost ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-[#151f2e] text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <span>Dialogue Vocal Boost</span>
-                    <span>{audioBoost ? 'ON (+6dB)' : 'OFF'}</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
 
           {/* Subtitles & Translation Menu Button */}
           <div className="relative">
@@ -802,8 +767,8 @@ export default function CustomVideoPlayer({
 
       </div>
 
-      {/* ── Bottom Controls Bar (Pro Player Mode) ── */}
-      {playerMode === 'pro' && (
+      {/* ── Bottom Controls Bar (Direct HTML5 Video Only) ── */}
+      {isDirectVideo && (
         <div className={`absolute bottom-0 left-0 right-0 p-3 sm:p-4 bg-gradient-to-t from-black/90 via-black/50 to-transparent z-20 transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
 
           {/* Progress / Scrub Bar */}
@@ -811,12 +776,10 @@ export default function CustomVideoPlayer({
             onClick={handleSeek}
             className="relative w-full h-1.5 sm:h-2 bg-slate-800/80 rounded-full cursor-pointer group/bar mb-3 overflow-hidden"
           >
-            {/* Buffered Progress */}
             <div
               style={{ width: `${duration ? (buffered / duration) * 100 : 0}%` }}
               className="absolute top-0 bottom-0 left-0 bg-slate-600/60 rounded-full"
             />
-            {/* Current Played Progress */}
             <div
               style={{ width: `${duration ? (currentTime / duration) * 100 : 0}%` }}
               className="absolute top-0 bottom-0 left-0 bg-sky-500 rounded-full shadow-lg shadow-sky-500/50"
@@ -827,7 +790,6 @@ export default function CustomVideoPlayer({
           <div className="flex items-center justify-between text-white text-xs sm:text-sm">
 
             <div className="flex items-center gap-3">
-              {/* Play / Pause Button */}
               <button
                 onClick={togglePlay}
                 className="p-1 hover:text-sky-400 transition-colors focus:outline-none"
@@ -836,7 +798,6 @@ export default function CustomVideoPlayer({
                 {isPlaying ? <Pause className="w-5 h-5 fill-white" /> : <Play className="w-5 h-5 fill-white ml-0.5" />}
               </button>
 
-              {/* Rewind 5s */}
               <button
                 onClick={() => { if (videoRef.current) videoRef.current.currentTime -= 5; }}
                 className="p-1 hover:text-sky-400 transition-colors"
@@ -845,7 +806,6 @@ export default function CustomVideoPlayer({
                 <Rewind className="w-4 h-4" />
               </button>
 
-              {/* Skip 5s */}
               <button
                 onClick={() => { if (videoRef.current) videoRef.current.currentTime += 5; }}
                 className="p-1 hover:text-sky-400 transition-colors"
@@ -854,7 +814,6 @@ export default function CustomVideoPlayer({
                 <FastForward className="w-4 h-4" />
               </button>
 
-              {/* Volume Control */}
               <div className="flex items-center gap-1.5 group/vol">
                 <button onClick={toggleMute} className="hover:text-sky-400 transition-colors">
                   {isMuted || volume === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
@@ -870,7 +829,6 @@ export default function CustomVideoPlayer({
                 />
               </div>
 
-              {/* Time Stamp */}
               <span className="text-slate-300 font-mono text-[11px] sm:text-xs">
                 {formatTime(currentTime)} / {formatTime(duration)}
               </span>
@@ -878,7 +836,6 @@ export default function CustomVideoPlayer({
 
             <div className="flex items-center gap-2 sm:gap-3">
 
-              {/* Subtitles Quick Toggle */}
               <button
                 onClick={() => setSubtitlesEnabled(!subtitlesEnabled)}
                 className={`p-1.5 rounded-lg text-xs font-bold transition-all ${
@@ -889,7 +846,6 @@ export default function CustomVideoPlayer({
                 <MessageSquare className="w-4 h-4" />
               </button>
 
-              {/* Playback Speed */}
               <select
                 value={playbackRate}
                 onChange={(e) => {
@@ -907,7 +863,6 @@ export default function CustomVideoPlayer({
                 <option value="2">2.0x</option>
               </select>
 
-              {/* Fullscreen Button */}
               <button
                 onClick={toggleFullscreen}
                 className="p-1 hover:text-sky-400 transition-colors focus:outline-none"
