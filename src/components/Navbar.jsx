@@ -1,11 +1,21 @@
 import React from 'react';
-import { Search, Film, BookOpen, BookmarkCheck, BarChart3, Download, Users, LogIn, ChevronDown } from 'lucide-react';
+import { Search, Film, BookOpen, BookmarkCheck, BarChart3, Download, Users, LogIn, ChevronDown, X } from 'lucide-react';
 
 export default function Navbar({
   activeTab, setActiveTab, mediaType, setMediaType,
   searchQuery, setSearchQuery, onOpenImportExport,
   trackedCount, user, profile, onOpenAuth, onOpenProfile
 }) {
+  const handleSearchChange = (val) => {
+    setSearchQuery(val);
+    if (activeTab !== 'browse') {
+      setActiveTab('browse');
+    }
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery('');
+  };
   return (
     <header className="sticky top-0 z-40 bg-[#0b1622]/95 backdrop-blur border-b border-[#1e293b]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -24,14 +34,24 @@ export default function Navbar({
 
           {/* Search Bar */}
           <div className="flex-1 max-w-md relative hidden md:block">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
-              placeholder={`Search ${mediaType === 'ANIME' ? 'Anime' : 'Manga'}...`}
+              placeholder={`Search ${mediaType === 'ANIME' ? 'Anime' : 'Manga'} by title, genre...`}
               value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full bg-[#151f2e] border border-[#1e293b] rounded-full pl-10 pr-4 py-1.5 text-sm text-white placeholder-slate-400 focus:outline-none focus:border-sky-500 transition-colors"
+              onChange={e => handleSearchChange(e.target.value)}
+              className="w-full bg-[#151f2e] border border-[#1e293b] rounded-full pl-10 pr-9 py-1.5 text-sm text-white placeholder-slate-400 focus:outline-none focus:border-sky-500 transition-colors shadow-inner"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={handleClearSearch}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
+                title="Clear search"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
           {/* Nav Links */}
@@ -119,14 +139,24 @@ export default function Navbar({
         {/* Mobile Search */}
         <div className="pb-3 md:hidden">
           <div className="relative">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
               placeholder={`Search ${mediaType === 'ANIME' ? 'Anime' : 'Manga'}...`}
               value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full bg-[#151f2e] border border-[#1e293b] rounded-full pl-10 pr-4 py-2 text-sm text-white placeholder-slate-400 focus:outline-none focus:border-sky-500"
+              onChange={e => handleSearchChange(e.target.value)}
+              className="w-full bg-[#151f2e] border border-[#1e293b] rounded-full pl-10 pr-9 py-2 text-sm text-white placeholder-slate-400 focus:outline-none focus:border-sky-500 shadow-inner"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={handleClearSearch}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-full hover:bg-slate-700 text-slate-400 hover:text-white"
+                title="Clear search"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </div>
       </div>

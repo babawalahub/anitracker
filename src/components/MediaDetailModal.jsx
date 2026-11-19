@@ -161,7 +161,7 @@ export default function MediaDetailModal({ mediaSummary, onClose, onUpdated, use
         {/* Top-Left Back Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 left-4 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/70 hover:bg-black text-white text-xs font-bold backdrop-blur transition-all shadow-lg hover:scale-105 border border-white/10"
+          className="absolute top-4 left-4 z-30 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/70 hover:bg-black text-white text-xs font-bold backdrop-blur transition-all shadow-lg hover:scale-105 border border-white/10"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>Back</span>
@@ -170,78 +170,84 @@ export default function MediaDetailModal({ mediaSummary, onClose, onUpdated, use
         {/* Top-Right Close (X) Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 z-20 p-2 rounded-full bg-black/70 hover:bg-black text-white backdrop-blur transition-all shadow-lg hover:scale-105 border border-white/10"
+          className="absolute top-4 right-4 z-30 p-2 rounded-full bg-black/70 hover:bg-black text-white backdrop-blur transition-all shadow-lg hover:scale-105 border border-white/10"
           title="Close (Esc)"
         >
           <X className="w-5 h-5" />
         </button>
 
-        {/* Banner Section */}
-        <div className="relative h-48 sm:h-64 w-full bg-slate-900 overflow-hidden">
-          {media.bannerImage ? (
-            <img
-              src={media.bannerImage}
-              alt="Banner"
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="w-full h-full bg-gradient-to-r from-sky-900 via-indigo-950 to-slate-900" />
+        {/* ─── 1. UPPER SECTION: ANIME NAME & BADGES ─── */}
+        <div className="pt-14 px-6 sm:px-8 pb-5 bg-gradient-to-b from-[#111c2e] to-[#0e1724] border-b border-[#1e293b]">
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold uppercase bg-sky-500/20 text-sky-400 border border-sky-500/30">
+              {media.format || media.type}
+            </span>
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#151f2e] text-slate-300 border border-[#1e293b]">
+              {media.status}
+            </span>
+            {media.averageScore && (
+              <span className="flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                <Star className="w-3.5 h-3.5 fill-emerald-400" />
+                {media.averageScore}% Score
+              </span>
+            )}
+            {media.seasonYear && (
+              <span className="text-xs text-slate-400 font-semibold px-2 py-0.5">
+                {media.season ? `${media.season} ` : ''}{media.seasonYear}
+              </span>
+            )}
+          </div>
+
+          {/* Anime Title in Upper */}
+          <h1 className="text-2xl sm:text-4xl font-black text-white leading-tight tracking-tight">
+            {titleEnglish || titleRomaji}
+          </h1>
+          {titleEnglish && titleRomaji && titleEnglish !== titleRomaji && (
+            <p className="text-sm sm:text-base text-slate-400 font-medium mt-1">{titleRomaji}</p>
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-[#0b1622] via-[#0b1622]/40 to-transparent" />
+          {titleNative && (
+            <p className="text-xs text-slate-500 font-normal mt-0.5">{titleNative}</p>
+          )}
+
+          {/* Genres */}
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {media.genres?.map((g) => (
+              <span key={g} className="text-xs bg-[#151f2e] border border-[#1e293b] text-slate-300 px-2.5 py-1 rounded-lg">
+                {g}
+              </span>
+            ))}
+          </div>
         </div>
 
-        {/* Header Content */}
-        <div className="px-6 sm:px-8 -mt-24 sm:-mt-32 relative z-10 mb-6">
-          <div className="flex flex-col sm:flex-row gap-6 items-start">
-            
-            {/* Poster Card */}
-            <div className="w-36 sm:w-48 aspect-[3/4.2] flex-shrink-0 rounded-2xl overflow-hidden shadow-2xl border-4 border-[#0b1622] bg-[#151f2e]">
+        {/* ─── 2. ON THE NAME BOTTOM: ANIME IMAGES SHOWCASE ─── */}
+        <div className="relative w-full bg-slate-950 overflow-hidden border-b border-[#1e293b] mb-6">
+          <div className="relative h-56 sm:h-72 w-full overflow-hidden">
+            {media.bannerImage ? (
               <img
-                src={media.coverImage?.extraLarge || media.coverImage?.large}
-                alt={titleRomaji}
+                src={media.bannerImage}
+                alt={`${titleRomaji} Banner`}
                 className="w-full h-full object-cover"
               />
-            </div>
+            ) : (
+              <div className="w-full h-full bg-gradient-to-r from-sky-950 via-indigo-950 to-slate-900" />
+            )}
+            <div className="absolute inset-0 bg-gradient-to-t from-[#0b1622] via-[#0b1622]/40 to-transparent" />
 
-            {/* Title & Quick Stats */}
-            <div className="flex-1 pt-2 sm:pt-16">
-              
-              <div className="flex flex-wrap items-center gap-2 mb-2">
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold uppercase bg-sky-500/20 text-sky-400 border border-sky-500/30">
-                  {media.format || media.type}
-                </span>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#1e293b] text-slate-300">
-                  {media.status}
-                </span>
-                {media.averageScore && (
-                  <span className="flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                    <Star className="w-3.5 h-3.5 fill-emerald-400" />
-                    {media.averageScore}% Score
-                  </span>
-                )}
+            {/* Poster / Cover Image at the bottom of the name */}
+            <div className="absolute bottom-4 left-6 sm:left-8 flex items-end gap-4 z-10">
+              <div className="w-28 sm:w-40 aspect-[3/4.2] flex-shrink-0 rounded-2xl overflow-hidden shadow-2xl border-4 border-[#0b1622] bg-[#151f2e]">
+                <img
+                  src={media.coverImage?.extraLarge || media.coverImage?.large}
+                  alt={titleRomaji}
+                  className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+                />
               </div>
-
-              <h1 className="text-2xl sm:text-3xl font-black text-white leading-tight">
-                {titleEnglish || titleRomaji}
-              </h1>
-              {titleEnglish && titleRomaji && titleEnglish !== titleRomaji && (
-                <p className="text-sm text-slate-400 font-medium mt-0.5">{titleRomaji}</p>
-              )}
-              {titleNative && (
-                <p className="text-xs text-slate-500 font-normal mt-0.5">{titleNative}</p>
-              )}
-
-              {/* Genres */}
-              <div className="flex flex-wrap gap-1.5 mt-3">
-                {media.genres?.map((g) => (
-                  <span key={g} className="text-xs bg-[#151f2e] border border-[#1e293b] text-slate-300 px-2.5 py-1 rounded-lg">
-                    {g}
-                  </span>
-                ))}
+              <div className="pb-2 hidden sm:block">
+                <span className="text-xs font-bold text-white bg-black/70 backdrop-blur px-3 py-1.5 rounded-xl border border-white/10 shadow-lg">
+                  Official Anime Cover Image
+                </span>
               </div>
-
             </div>
-
           </div>
         </div>
 

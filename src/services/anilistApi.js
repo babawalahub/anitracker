@@ -217,7 +217,7 @@ export async function fetchAniList(query, variables = {}) {
 
 export async function searchMedia({
   page = 1,
-  perPage = 20,
+  perPage = 24,
   type = 'ANIME',
   search = undefined,
   sort = ['TRENDING_DESC', 'POPULARITY_DESC'],
@@ -227,12 +227,16 @@ export async function searchMedia({
   format = undefined,
   status = undefined
 }) {
+  const hasSearch = Boolean(search && search.trim().length > 0);
+  const cleanSearch = hasSearch ? search.trim() : undefined;
+
   const variables = {
     page,
     perPage,
     type,
-    search: search ? search.trim() : undefined,
-    sort,
+    search: cleanSearch,
+    // When a title search term is provided, use SEARCH_MATCH so exact name matches appear first!
+    sort: hasSearch ? ['SEARCH_MATCH'] : (sort || ['TRENDING_DESC', 'POPULARITY_DESC']),
     season: season || undefined,
     seasonYear: seasonYear ? parseInt(seasonYear, 10) : undefined,
     genre: genre || undefined,

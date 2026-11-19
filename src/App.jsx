@@ -191,10 +191,20 @@ export default function App() {
       console.error("API error, falling back to local dataset:", err);
       setApiError(err.message || "Failed to load live data");
       
-      // Fallback
-      const fallback = mediaType === 'ANIME' ? FALLBACK_ANIME : FALLBACK_MANGA;
-      setMediaItems(fallback);
-      setPageInfo({ hasNextPage: false, total: fallback.length });
+      // Fallback with live search filtering
+      const baseFallback = mediaType === 'ANIME' ? FALLBACK_ANIME : FALLBACK_MANGA;
+      let filteredFallback = baseFallback;
+      if (searchQuery && searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        filteredFallback = baseFallback.filter(item => 
+          (item.title?.english || '').toLowerCase().includes(q) ||
+          (item.title?.romaji || '').toLowerCase().includes(q) ||
+          (item.title?.native || '').toLowerCase().includes(q) ||
+          (item.genres || []).some(g => g.toLowerCase().includes(q))
+        );
+      }
+      setMediaItems(filteredFallback);
+      setPageInfo({ hasNextPage: false, total: filteredFallback.length });
     } finally {
       setLoading(false);
     }
