@@ -428,6 +428,8 @@ export default function App() {
           mediaSummary={selectedMedia}
           onClose={closeMediaModal}
           onUpdated={reloadLists}
+          user={user}
+          profile={profile}
         />
       )}
 

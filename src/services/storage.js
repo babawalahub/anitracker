@@ -81,7 +81,9 @@ export function upsertEntry(media, entryData = {}) {
     score: Math.max(0, Math.min(10, parsedScore)),
     notes: entryData.notes !== undefined ? entryData.notes : (existing.notes || ''),
     updatedAt: new Date().toISOString(),
-    genres: media.genres || existing.genres || []
+    genres: media.genres || existing.genres || [],
+    videoLinks: entryData.videoLinks !== undefined ? entryData.videoLinks : (existing.videoLinks || {}),
+    customVideoUrl: entryData.customVideoUrl !== undefined ? entryData.customVideoUrl : (existing.customVideoUrl || '')
   };
 
   // Auto-complete if progress reaches max episodes

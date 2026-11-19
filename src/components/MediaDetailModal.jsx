@@ -5,8 +5,10 @@ import {
 } from 'lucide-react';
 import { TRACKING_STATUS, STATUS_LABELS, getEntry, upsertEntry, deleteEntry } from '../services/storage';
 import { getMediaDetail } from '../services/anilistApi';
+import AnimeVideoPlayer from './AnimeVideoPlayer';
+import MediaComments from './MediaComments';
 
-export default function MediaDetailModal({ mediaSummary, onClose, onUpdated }) {
+export default function MediaDetailModal({ mediaSummary, onClose, onUpdated, user, profile }) {
   const [media, setMedia] = useState(mediaSummary);
   const [loading, setLoading] = useState(true);
   const [userEntry, setUserEntry] = useState(getEntry(mediaSummary.id) || null);
@@ -28,6 +30,18 @@ export default function MediaDetailModal({ mediaSummary, onClose, onUpdated }) {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
+
+  // Sync state if userEntry updates
+  useEffect(() => {
+    const current = getEntry(mediaSummary.id);
+    setUserEntry(current);
+    if (current) {
+      if (current.status) setStatus(current.status);
+      if (current.progress !== undefined) setProgress(current.progress);
+      if (current.score !== undefined) setScore(current.score);
+      if (current.notes !== undefined) setNotes(current.notes);
+    }
+  }, [mediaSummary.id]);
 
   // Fetch full rich details (characters, relations, voice actors, trailer)
   useEffect(() => {
@@ -57,7 +71,55 @@ export default function MediaDetailModal({ mediaSummary, onClose, onUpdated }) {
       status,
       progress: parseInt(progress, 10) || 0,
       score: parseFloat(score) || 0,
-      notes
+      notes,
+      videoLinks: userEntry?.videoLinks,
+      customVideoUrl: userEntry?.customVideoUrl
+    });
+    setUserEntry(updated);
+    if (onUpdated) onUpdated();
+  };
+
+  const handleSaveVideoLinks = (linksMap, mainUrl) => {
+    const updated = upsertEntry(media, {
+      status,
+      progress: parseInt(progress, 10) || 0,
+      score: parseFloat(score) || 0,
+      notes,
+      videoLinks: linksMap,
+      customVideoUrl: mainUrl
+    });
+    setUserEntry(updated);
+    if (onUpdated) onUpdated();
+  };
+
+  const handleUpdateScore = (newScore) => {
+    setScore(newScore);
+    const updated = upsertEntry(media, {
+      status,
+      progress: parseInt(progress, 10) || 0,
+      score: parseFloat(newScore) || 0,
+      notes,
+      videoLinks: userEntry?.videoLinks,
+      customVideoUrl: userEntry?.customVideoUrl
+    });
+    setUserEntry(updated);
+    if (onUpdated) onUpdated();
+  };
+
+  const handleUpdateProgress = (newEp) => {
+    const epNum = parseInt(newEp, 10) || 0;
+    setProgress(epNum);
+    const isCompleted = Boolean(maxUnits && epNum >= maxUnits);
+    const newStatus = isCompleted ? TRACKING_STATUS.COMPLETED : TRACKING_STATUS.CURRENT;
+    setStatus(newStatus);
+
+    const updated = upsertEntry(media, {
+      status: newStatus,
+      progress: epNum,
+      score: parseFloat(score) || 0,
+      notes,
+      videoLinks: userEntry?.videoLinks,
+      customVideoUrl: userEntry?.customVideoUrl
     });
     setUserEntry(updated);
     if (onUpdated) onUpdated();
@@ -129,7 +191,7 @@ export default function MediaDetailModal({ mediaSummary, onClose, onUpdated }) {
         </div>
 
         {/* Header Content */}
-        <div className="px-6 sm:px-8 -mt-24 sm:-mt-32 relative z-10">
+        <div className="px-6 sm:px-8 -mt-24 sm:-mt-32 relative z-10 mb-6">
           <div className="flex flex-col sm:flex-row gap-6 items-start">
             
             {/* Poster Card */}
@@ -183,141 +245,152 @@ export default function MediaDetailModal({ mediaSummary, onClose, onUpdated }) {
           </div>
         </div>
 
-        {/* Tracking Editor Card */}
-        <div className="mx-6 sm:mx-8 my-6 bg-[#151f2e] border border-[#1e293b] rounded-2xl p-5 shadow-lg">
-          <div className="flex items-center justify-between mb-4 pb-3 border-b border-[#1e293b]">
-            <h3 className="font-bold text-white text-base flex items-center gap-2">
-              <Award className="w-5 h-5 text-sky-400" />
-              <span>Track Your Progress</span>
-            </h3>
-            {userEntry && (
-              <span className="text-xs text-emerald-400 font-semibold bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20 flex items-center gap-1">
-                <Check className="w-3.5 h-3.5" /> In Your List
-              </span>
-            )}
-          </div>
+        {/* Inner Content Area */}
+        <div className="px-6 sm:px-8 space-y-6">
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            
-            {/* Status Dropdown */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                Status
-              </label>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className="w-full bg-[#0b1622] border border-[#1e293b] rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500 font-medium cursor-pointer"
-              >
-                {Object.entries(TRACKING_STATUS).map(([key, val]) => (
-                  <option key={key} value={val}>{STATUS_LABELS[val]}</option>
-                ))}
-              </select>
+          {/* 1. PERSONAL VIDEO PLAYER & GOOGLE DRIVE STREAM (for Anime) */}
+          {media.type === 'ANIME' && (
+            <AnimeVideoPlayer
+              media={media}
+              userEntry={userEntry}
+              onSaveLinks={handleSaveVideoLinks}
+              onUpdateProgress={handleUpdateProgress}
+              onUpdateScore={handleUpdateScore}
+            />
+          )}
+
+          {/* 2. TRACKING EDITOR CARD */}
+          <div className="bg-[#151f2e] border border-[#1e293b] rounded-3xl p-5 shadow-lg">
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-[#1e293b]">
+              <h3 className="font-bold text-white text-base flex items-center gap-2">
+                <Award className="w-5 h-5 text-sky-400" />
+                <span>Save to Personal Account</span>
+              </h3>
+              {userEntry && (
+                <span className="text-xs text-emerald-400 font-semibold bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20 flex items-center gap-1">
+                  <Check className="w-3.5 h-3.5" /> In Your List
+                </span>
+              )}
             </div>
 
-            {/* Episode / Chapter Stepper */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                {unitLabel} Progress {maxUnits ? `(of ${maxUnits})` : ''}
-              </label>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleDecrement}
-                  className="w-9 h-9 rounded-xl bg-[#0b1622] border border-[#1e293b] hover:border-sky-500 flex items-center justify-center text-slate-300 hover:text-white transition-colors"
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              
+              {/* Status Dropdown */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                  Status
+                </label>
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  className="w-full bg-[#0b1622] border border-[#1e293b] rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-sky-500 font-medium cursor-pointer"
                 >
-                  <Minus className="w-4 h-4" />
-                </button>
-                <input
-                  type="number"
-                  min="0"
-                  max={maxUnits || 9999}
-                  value={progress}
-                  onChange={(e) => setProgress(e.target.value)}
-                  className="flex-1 bg-[#0b1622] border border-[#1e293b] rounded-xl px-3 py-2 text-center text-sm font-bold text-white focus:outline-none focus:border-sky-500"
-                />
-                <button
-                  type="button"
-                  onClick={handleIncrement}
-                  className="w-9 h-9 rounded-xl bg-[#0b1622] border border-[#1e293b] hover:border-sky-500 flex items-center justify-center text-slate-300 hover:text-white transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
+                  {Object.entries(TRACKING_STATUS).map(([key, val]) => (
+                    <option key={key} value={val}>{STATUS_LABELS[val]}</option>
+                  ))}
+                </select>
               </div>
+
+              {/* Episode / Chapter Stepper */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                  {unitLabel} Progress {maxUnits ? `(of ${maxUnits})` : ''}
+                </label>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleDecrement}
+                    className="w-9 h-9 rounded-xl bg-[#0b1622] border border-[#1e293b] hover:border-sky-500 flex items-center justify-center text-slate-300 hover:text-white transition-colors"
+                  >
+                    <Minus className="w-4 h-4" />
+                  </button>
+                  <input
+                    type="number"
+                    min="0"
+                    max={maxUnits || 9999}
+                    value={progress}
+                    onChange={(e) => setProgress(e.target.value)}
+                    className="flex-1 bg-[#0b1622] border border-[#1e293b] rounded-xl px-3 py-2 text-center text-sm font-bold text-white focus:outline-none focus:border-sky-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleIncrement}
+                    className="w-9 h-9 rounded-xl bg-[#0b1622] border border-[#1e293b] hover:border-sky-500 flex items-center justify-center text-slate-300 hover:text-white transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Score (1-10 Slider) */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center justify-between">
+                  <span>Score Rating</span>
+                  <span className="text-amber-400 font-extrabold">{score > 0 ? `${score} / 10 ★` : 'Not Rated'}</span>
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="10"
+                  step="0.5"
+                  value={score}
+                  onChange={(e) => setScore(e.target.value)}
+                  className="w-full accent-amber-400 cursor-pointer"
+                />
+              </div>
+
             </div>
 
-            {/* Score (1-10 or 100) */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center justify-between">
-                <span>Score</span>
-                <span className="text-sky-400 font-extrabold">{score > 0 ? `${score} / 10` : 'Not Rated'}</span>
+            {/* Notes */}
+            <div className="mt-4">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                Personal Notes
               </label>
-              <input
-                type="range"
-                min="0"
-                max="10"
-                step="0.5"
-                value={score}
-                onChange={(e) => setScore(e.target.value)}
-                className="w-full accent-sky-500 cursor-pointer"
+              <textarea
+                rows="2"
+                placeholder="Write your personal review, favorite quotes, or watch date..."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="w-full bg-[#0b1622] border border-[#1e293b] rounded-xl p-3 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500 resize-none"
               />
             </div>
 
-          </div>
+            {/* Actions */}
+            <div className="flex items-center justify-between mt-4 pt-3 border-t border-[#1e293b]">
+              {userEntry ? (
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  className="flex items-center gap-1.5 text-xs font-bold text-rose-400 hover:text-rose-300 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Remove from List</span>
+                </button>
+              ) : <div />}
 
-          {/* Notes */}
-          <div className="mt-4">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-              Personal Notes
-            </label>
-            <textarea
-              rows="2"
-              placeholder="Write your thoughts, favorite moments, or watch date..."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              className="w-full bg-[#0b1622] border border-[#1e293b] rounded-xl p-3 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500 resize-none"
-            />
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center justify-between mt-4 pt-3 border-t border-[#1e293b]">
-            {userEntry ? (
               <button
                 type="button"
-                onClick={handleDelete}
-                className="flex items-center gap-1.5 text-xs font-bold text-rose-400 hover:text-rose-300 transition-colors"
+                onClick={handleSave}
+                className="flex items-center gap-2 px-6 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-white font-bold text-sm shadow-lg shadow-sky-500/20 transition-all hover:scale-102"
               >
-                <Trash2 className="w-4 h-4" />
-                <span>Remove from List</span>
+                <Check className="w-4 h-4" />
+                <span>Save to Account</span>
               </button>
-            ) : <div />}
+            </div>
 
-            <button
-              type="button"
-              onClick={handleSave}
-              className="flex items-center gap-2 px-6 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-white font-bold text-sm shadow-lg shadow-sky-500/20 transition-all hover:scale-102"
-            >
-              <Check className="w-4 h-4" />
-              <span>Save Progress</span>
-            </button>
           </div>
 
-        </div>
-
-        {/* Tabbed / Detailed Sections */}
-        <div className="px-6 sm:px-8 pb-8 space-y-6">
-          
-          {/* Synopsis */}
+          {/* 3. SYNOPSIS */}
           <div>
             <h3 className="text-sm font-extrabold text-white uppercase tracking-wider mb-2">
               Synopsis
             </h3>
-            <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line">
+            <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line bg-[#151f2e] p-4 rounded-2xl border border-[#1e293b]">
               {media.description ? media.description.replace(/<[^>]*>?/gm, '') : 'No synopsis available.'}
             </p>
           </div>
 
-          {/* Key Info Grid */}
+          {/* 4. KEY INFO GRID */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#151f2e] p-4 rounded-2xl border border-[#1e293b] text-xs">
             <div>
               <span className="text-slate-400 block font-medium">Studio / Publisher</span>
@@ -345,7 +418,7 @@ export default function MediaDetailModal({ mediaSummary, onClose, onUpdated }) {
             </div>
           </div>
 
-          {/* Trailer Preview */}
+          {/* 5. OFFICIAL TRAILER (if available) */}
           {media.trailer?.site === 'youtube' && (
             <div>
               <div className="flex items-center justify-between mb-2">
@@ -366,7 +439,7 @@ export default function MediaDetailModal({ mediaSummary, onClose, onUpdated }) {
             </div>
           )}
 
-          {/* Characters and Voice Actors */}
+          {/* 6. CHARACTERS & VOICE ACTORS */}
           {media.characters?.edges && media.characters.edges.length > 0 && (
             <div>
               <h3 className="text-sm font-extrabold text-white uppercase tracking-wider mb-3">
@@ -412,8 +485,15 @@ export default function MediaDetailModal({ mediaSummary, onClose, onUpdated }) {
             </div>
           )}
 
+          {/* 7. COMMENTS & COMMUNITY DISCUSSION SECTION */}
+          <MediaComments
+            media={media}
+            user={user}
+            profile={profile}
+          />
+
           {/* Bottom Back Button */}
-          <div className="pt-4 border-t border-[#1e293b] flex justify-center">
+          <div className="pt-2 pb-6 border-t border-[#1e293b] flex justify-center">
             <button
               onClick={onClose}
               className="flex items-center gap-2 px-6 py-2.5 rounded-2xl bg-[#151f2e] hover:bg-[#1e293b] text-slate-300 hover:text-white font-bold text-xs border border-[#1e293b] transition-all"
