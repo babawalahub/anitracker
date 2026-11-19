@@ -98,6 +98,9 @@ export default function AnimeVideoPlayer({
     const newLinks = { ...videoLinks };
     const newTitles = { ...videoTitles };
 
+    // Determine series name (e.g. Reincarnated as a Sword)
+    const seriesName = media?.title?.english || media?.title?.romaji || media?.title?.native || 'Reincarnated as a Sword';
+
     // If filenames or links were pasted (like in user screenshot)
     if (lines.length > 0) {
       lines.forEach((line, idx) => {
@@ -111,15 +114,14 @@ export default function AnimeVideoPlayer({
         cleanName = cleanName.replace(/\.(mkv|mp4|webm|avi|mov)$/i, '').trim();
 
         newLinks[epNum] = url;
-        newTitles[epNum] = cleanName || `${media?.title?.english || media?.title?.romaji || 'Episode'} - Ep ${epNum}`;
+        newTitles[epNum] = cleanName || `${seriesName} - S01E${epNum < 10 ? '0' + epNum : epNum}`;
       });
     } else {
-      // Auto-generate based on series count
+      // Auto-generate based on series count with formatted padded name: S01E01 to S01E12
       for (let i = 1; i <= targetCount; i++) {
+        const padded = i < 10 ? `0${i}` : `${i}`;
         newLinks[i] = cleanedLink || videoLinks[i] || '';
-        if (!newTitles[i]) {
-          newTitles[i] = `${media?.title?.english || media?.title?.romaji || 'Episode'} - Ep ${i}`;
-        }
+        newTitles[i] = `${seriesName} - S01E${padded}`;
       }
     }
 
@@ -513,6 +515,11 @@ export default function AnimeVideoPlayer({
             title={currentTitle}
             animeTitle={media?.title?.english || media?.title?.romaji || 'Anime'}
             episodeNum={currentEpisode}
+            episodesList={allEpisodeNumbers.map(ep => ({
+              num: ep,
+              title: videoTitles[ep] || `${media?.title?.english || media?.title?.romaji || 'Episode'} - S01E${ep < 10 ? '0' + ep : ep}`
+            }))}
+            onSelectEpisode={(ep) => setCurrentEpisode(ep)}
             onEnded={handleNextEpisode}
           />
         ) : (
@@ -537,6 +544,57 @@ export default function AnimeVideoPlayer({
           </div>
         )}
       </div>
+
+      {/* Quick Episode Switcher Horizontal Bar */}
+      <div className="p-3 bg-[#0a121e] border-t border-[#1e293b] flex items-center gap-1.5 overflow-x-auto scrollbar-thin">
+        <span className="text-[10px] font-black uppercase text-slate-400 mr-1 flex-shrink-0">
+          Episodes ({totalEpCount}):
+        </span>
+        {allEpisodeNumbers.map((ep) => (
+          <button
+            key={ep}
+            onClick={() => setCurrentEpisode(ep)}
+            className={`px-3 py-1 rounded-xl text-xs font-black whitespace-nowrap transition-all border flex items-center gap-1.5 ${
+              ep === currentEpisode
+                ? 'bg-sky-500 text-white border-sky-400 shadow-md shadow-sky-500/30 scale-105'
+                : 'bg-[#151f2e] text-slate-300 border-[#1e293b] hover:border-sky-500/50 hover:text-white'
+            }`}
+          >
+            <span>Ep {ep}</span>
+            {videoTitles[ep] && (
+              <span className="text-[10px] opacity-80 max-w-[120px] truncate hidden sm:inline">
+                {videoTitles[ep].replace(/^.*?- /i, '')}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Google Drive 403 & Sharing Info Tip */}
+      {googleDriveFolderUrl && (
+        <div className="mx-4 my-2.5 bg-sky-950/40 border border-sky-500/30 rounded-2xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-2 text-sky-200">
+            <Folder className="w-4 h-4 text-sky-400 flex-shrink-0" />
+            <span>
+              Drive series connected ({totalEpCount} Episodes). If video displays Google <strong>403 Access Error</strong>:
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-amber-300 font-bold bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20">
+              Set Drive Share: "Anyone with the link can view"
+            </span>
+            <a
+              href={googleDriveFolderUrl || activeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1 rounded-lg bg-sky-500 hover:bg-sky-400 text-white font-bold flex items-center gap-1 shadow"
+            >
+              <span>Open in Drive</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* ── Now Playing & Navigation Bar ── */}
       <div className="p-4 bg-[#0e1724] border-t border-[#1e293b] flex flex-wrap items-center justify-between gap-3">
