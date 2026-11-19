@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, ArrowLeft, Star, Calendar, Clock, Tv, Film, BookOpen, Layers, 
   Play, Plus, Minus, Check, Trash2, Heart, Award, ExternalLink 
@@ -9,6 +9,7 @@ import AnimeVideoPlayer from './AnimeVideoPlayer';
 import MediaComments from './MediaComments';
 
 export default function MediaDetailModal({ mediaSummary, onClose, onUpdated, user, profile }) {
+  const overlayRef = useRef(null);
   const [media, setMedia] = useState(mediaSummary);
   const [loading, setLoading] = useState(true);
   const [userEntry, setUserEntry] = useState(getEntry(mediaSummary.id) || null);
@@ -19,6 +20,13 @@ export default function MediaDetailModal({ mediaSummary, onClose, onUpdated, use
   const [score, setScore] = useState(userEntry?.score || 0);
   const [notes, setNotes] = useState(userEntry?.notes || '');
   const [showTrailer, setShowTrailer] = useState(false);
+
+  // Scroll to top when opening a new media
+  useEffect(() => {
+    if (overlayRef.current) {
+      overlayRef.current.scrollTop = 0;
+    }
+  }, [mediaSummary.id]);
 
   // Close on Escape key press
   useEffect(() => {
@@ -146,22 +154,24 @@ export default function MediaDetailModal({ mediaSummary, onClose, onUpdated, use
   const titleEnglish = media.title?.english;
   const titleRomaji = media.title?.romaji;
   const titleNative = media.title?.native;
+  const isAnime = !media.type || String(media.type).toUpperCase() === 'ANIME' || media.format !== 'MANGA';
 
   return (
     <div 
+      ref={overlayRef}
       onClick={onClose}
-      className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-200 cursor-pointer"
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/85 backdrop-blur-md flex items-start justify-center p-2 sm:p-4 md:py-8 animate-in fade-in duration-200 cursor-pointer"
     >
       
       <div 
-        className="relative w-full max-w-4xl bg-[#0b1622] border border-[#1e293b] rounded-3xl overflow-hidden shadow-2xl my-8 text-slate-200 cursor-default"
+        className="relative w-full max-w-4xl bg-[#0b1622] border border-[#1e293b] rounded-3xl overflow-hidden shadow-2xl mb-12 text-slate-200 cursor-default"
         onClick={(e) => e.stopPropagation()}
       >
         
         {/* Top-Left Back Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 left-4 z-30 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/70 hover:bg-black text-white text-xs font-bold backdrop-blur transition-all shadow-lg hover:scale-105 border border-white/10"
+          className="absolute top-4 left-4 z-30 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/75 hover:bg-black text-white text-xs font-bold backdrop-blur transition-all shadow-lg hover:scale-105 border border-white/20"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>Back</span>
@@ -170,7 +180,7 @@ export default function MediaDetailModal({ mediaSummary, onClose, onUpdated, use
         {/* Top-Right Close (X) Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 z-30 p-2 rounded-full bg-black/70 hover:bg-black text-white backdrop-blur transition-all shadow-lg hover:scale-105 border border-white/10"
+          className="absolute top-4 right-4 z-30 p-2 rounded-full bg-black/75 hover:bg-black text-white backdrop-blur transition-all shadow-lg hover:scale-105 border border-white/20"
           title="Close (Esc)"
         >
           <X className="w-5 h-5" />
@@ -178,15 +188,21 @@ export default function MediaDetailModal({ mediaSummary, onClose, onUpdated, use
 
         {/* ─── 1. UPPER SECTION: ANIME NAME & BADGES ─── */}
         <div className="pt-14 px-6 sm:px-8 pb-5 bg-gradient-to-b from-[#111c2e] to-[#0e1724] border-b border-[#1e293b]">
-          <div className="flex flex-wrap items-center gap-2 mb-2">
+          <div className="flex flex-wrap items-center gap-2 mb-2.5">
             <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold uppercase bg-sky-500/20 text-sky-400 border border-sky-500/30">
-              {media.format || media.type}
+              {media.format || media.type || 'ANIME'}
             </span>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#151f2e] text-slate-300 border border-[#1e293b]">
               {media.status}
             </span>
+            {maxUnits && (
+              <span className="flex items-center gap-1.5 px-3 py-0.5 rounded-full text-xs font-black bg-sky-500/25 text-sky-300 border border-sky-400/50 shadow-sm animate-pulse">
+                <Tv className="w-3.5 h-3.5 text-sky-400" />
+                <span>{maxUnits} {unitLabel}s Total</span>
+              </span>
+            )}
             {media.averageScore && (
-              <span className="flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+              <span className="flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                 <Star className="w-3.5 h-3.5 fill-emerald-400" />
                 {media.averageScore}% Score
               </span>
@@ -221,7 +237,7 @@ export default function MediaDetailModal({ mediaSummary, onClose, onUpdated, use
 
         {/* ─── 2. ON THE NAME BOTTOM: ANIME IMAGES SHOWCASE ─── */}
         <div className="relative w-full bg-slate-950 overflow-hidden border-b border-[#1e293b] mb-6">
-          <div className="relative h-56 sm:h-72 w-full overflow-hidden">
+          <div className="relative h-60 sm:h-76 w-full overflow-hidden">
             {media.bannerImage ? (
               <img
                 src={media.bannerImage}
@@ -235,16 +251,20 @@ export default function MediaDetailModal({ mediaSummary, onClose, onUpdated, use
 
             {/* Poster / Cover Image at the bottom of the name */}
             <div className="absolute bottom-4 left-6 sm:left-8 flex items-end gap-4 z-10">
-              <div className="w-28 sm:w-40 aspect-[3/4.2] flex-shrink-0 rounded-2xl overflow-hidden shadow-2xl border-4 border-[#0b1622] bg-[#151f2e]">
+              <div className="w-28 sm:w-44 aspect-[3/4.2] flex-shrink-0 rounded-2xl overflow-hidden shadow-2xl border-4 border-[#0b1622] bg-[#151f2e]">
                 <img
                   src={media.coverImage?.extraLarge || media.coverImage?.large}
                   alt={titleRomaji}
                   className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
                 />
               </div>
-              <div className="pb-2 hidden sm:block">
-                <span className="text-xs font-bold text-white bg-black/70 backdrop-blur px-3 py-1.5 rounded-xl border border-white/10 shadow-lg">
-                  Official Anime Cover Image
+              <div className="pb-2 flex flex-col gap-1.5">
+                <span className="text-xs font-black text-white bg-sky-600/90 backdrop-blur px-3 py-1.5 rounded-xl border border-white/20 shadow-lg flex items-center gap-1.5 w-fit">
+                  <Tv className="w-3.5 h-3.5 text-white" />
+                  <span>{maxUnits ? `${maxUnits} Episodes` : 'Series'}</span>
+                </span>
+                <span className="text-[11px] font-bold text-slate-300 bg-black/75 backdrop-blur px-3 py-1 rounded-lg border border-white/10 shadow w-fit">
+                  Official Anime Cover
                 </span>
               </div>
             </div>
@@ -255,7 +275,7 @@ export default function MediaDetailModal({ mediaSummary, onClose, onUpdated, use
         <div className="px-6 sm:px-8 space-y-6">
 
           {/* 1. PERSONAL VIDEO PLAYER & GOOGLE DRIVE STREAM (for Anime) */}
-          {media.type === 'ANIME' && (
+          {isAnime && (
             <AnimeVideoPlayer
               media={media}
               userEntry={userEntry}

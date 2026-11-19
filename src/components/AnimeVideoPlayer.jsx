@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Play, Plus, Check, Star, Link, ExternalLink, 
-  Trash2, AlertCircle, Sparkles, Film, ChevronRight, Layers 
+  Play, Plus, Check, Star, Link as LinkIcon, ExternalLink, 
+  Trash2, AlertCircle, Sparkles, Film, ChevronRight, Layers, Search, 
+  SkipForward, ChevronLeft
 } from 'lucide-react';
 import { formatEmbedUrl, parseMultipleEpisodeLinks } from '../services/videoHelper';
 
@@ -22,6 +23,8 @@ export default function AnimeVideoPlayer({
   const [showLinkEditor, setShowLinkEditor] = useState(false);
   const [editorTab, setEditorTab] = useState('single'); // 'single' | 'bulk'
   const [hoverScore, setHoverScore] = useState(0);
+  const [searchEp, setSearchEp] = useState('');
+  const [activeChunk, setActiveChunk] = useState('all'); // 'all' or '1-25', '26-50', etc.
 
   // Sync state if userEntry changes
   useEffect(() => {
@@ -35,7 +38,7 @@ export default function AnimeVideoPlayer({
   }, [currentEpisode, videoLinks]);
 
   // Current active video url
-  const activeUrl = videoLinks[currentEpisode] || '';
+  const activeUrl = videoLinks[currentEpisode] || (currentEpisode === 1 ? userEntry?.customVideoUrl : '') || '';
   const parsedVideo = activeUrl ? formatEmbedUrl(activeUrl) : null;
 
   const totalLinkedEpisodes = Object.keys(videoLinks).filter(k => Boolean(videoLinks[k])).length;
@@ -76,36 +79,71 @@ export default function AnimeVideoPlayer({
 
   const currentScore = userEntry?.score || 0;
 
-  // Generate episode numbers array
+  // Generate episode numbers array (e.g. 1 to 170 for Black Clover)
   const totalEpCount = Math.max(maxEpisodes || 12, ...Object.keys(videoLinks).map(Number), 1);
   const episodeList = Array.from({ length: totalEpCount }, (_, i) => i + 1);
 
+  // Generate chunks if episode count > 25 (e.g., 1-25, 26-50, etc.)
+  const CHUNK_SIZE = 25;
+  const chunkRanges = [];
+  if (totalEpCount > CHUNK_SIZE) {
+    for (let i = 1; i <= totalEpCount; i += CHUNK_SIZE) {
+      const end = Math.min(i + CHUNK_SIZE - 1, totalEpCount);
+      chunkRanges.push({ label: `${i}-${end}`, start: i, end });
+    }
+  }
+
+  // Filter episodes based on chunk selection and search query
+  let displayedEpisodes = episodeList;
+  if (searchEp.trim()) {
+    displayedEpisodes = episodeList.filter(ep => String(ep).includes(searchEp.trim()));
+  } else if (activeChunk !== 'all') {
+    const range = chunkRanges.find(r => r.label === activeChunk);
+    if (range) {
+      displayedEpisodes = episodeList.filter(ep => ep >= range.start && ep <= range.end);
+    }
+  }
+
+  const handleNextEpisode = () => {
+    if (currentEpisode < totalEpCount) {
+      const next = currentEpisode + 1;
+      setCurrentEpisode(next);
+      onUpdateProgress(next);
+    }
+  };
+
+  const handlePrevEpisode = () => {
+    if (currentEpisode > 1) {
+      setCurrentEpisode(currentEpisode - 1);
+    }
+  };
+
   return (
-    <div className="bg-[#151f2e] border border-[#1e293b] rounded-3xl overflow-hidden shadow-xl mb-6">
+    <div className="bg-[#151f2e] border-2 border-sky-500/40 rounded-3xl overflow-hidden shadow-2xl mb-6">
       
       {/* Top Header Bar */}
-      <div className="px-5 py-4 border-b border-[#1e293b] flex flex-wrap items-center justify-between gap-3 bg-[#0e1724]">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center font-bold">
-            <Play className="w-4 h-4 fill-sky-400" />
+      <div className="px-5 py-4 border-b border-[#1e293b] flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-sky-950 via-[#0e1724] to-[#151f2e]">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-sky-500 to-indigo-600 text-white flex items-center justify-center font-bold shadow-lg shadow-sky-500/30">
+            <Play className="w-5 h-5 fill-white ml-0.5" />
           </div>
           <div>
-            <h3 className="font-extrabold text-sm text-white flex items-center gap-2">
-              <span>Personal Player & Stream</span>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-400 font-semibold border border-sky-500/30">
-                Episode {currentEpisode}
+            <h3 className="font-black text-sm sm:text-base text-white flex items-center gap-2">
+              <span>Google Drive & Video Player</span>
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-sky-500/20 text-sky-400 font-extrabold border border-sky-500/30">
+                Episode {currentEpisode} of {totalEpCount}
               </span>
             </h3>
-            <p className="text-[11px] text-slate-400">
+            <p className="text-xs text-slate-300">
               {totalLinkedEpisodes > 0 
-                ? `${totalLinkedEpisodes} episode link${totalLinkedEpisodes > 1 ? 's' : ''} saved in your account` 
-                : 'Supports Google Drive, direct MP4, YouTube, & stream links'}
+                ? `✅ ${totalLinkedEpisodes} of ${totalEpCount} episodes have video links saved to your account` 
+                : `Paste Google Drive or direct MP4 link below to play video for any episode (1-${totalEpCount})`}
             </p>
           </div>
         </div>
 
         {/* Right Action: Rate Anime & Link Button */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           
           {/* Quick Rating in player */}
           <div className="flex items-center gap-1 bg-[#0b1622] px-3 py-1.5 rounded-xl border border-[#1e293b]">
@@ -119,7 +157,7 @@ export default function AnimeVideoPlayer({
                   onMouseLeave={() => setHoverScore(0)}
                   onClick={() => onUpdateScore(star)}
                   className="p-0.5 transition-transform hover:scale-125 focus:outline-none"
-                  title={`Rate ${star} / 10`}
+                  title={`Rate ${star} / 10 ★`}
                 >
                   <Star 
                     className={`w-3.5 h-3.5 ${
@@ -139,20 +177,20 @@ export default function AnimeVideoPlayer({
           {/* Add / Edit Video Link Button */}
           <button
             onClick={() => setShowLinkEditor(!showLinkEditor)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all border shadow-md ${
               showLinkEditor 
-                ? 'bg-sky-500 text-white border-sky-400' 
-                : 'bg-[#0b1622] text-slate-300 border-[#1e293b] hover:border-sky-500 hover:text-white'
+                ? 'bg-sky-500 text-white border-sky-400 shadow-sky-500/20' 
+                : 'bg-sky-500/20 text-sky-400 border-sky-500/40 hover:bg-sky-500 hover:text-white'
             }`}
           >
-            <Link className="w-3.5 h-3.5" />
-            <span>{activeUrl ? 'Edit Link' : '+ Add Video Link'}</span>
+            <LinkIcon className="w-3.5 h-3.5" />
+            <span>{activeUrl ? `Change Ep ${currentEpisode} Link` : `+ Add Google Drive Link`}</span>
           </button>
 
         </div>
       </div>
 
-      {/* Link Editor Dropdown / Form */}
+      {/* Link Editor Bar / Form */}
       {showLinkEditor && (
         <div className="p-4 bg-[#0b1622] border-b border-[#1e293b] animate-in fade-in duration-150">
           
@@ -172,48 +210,54 @@ export default function AnimeVideoPlayer({
                   editorTab === 'bulk' ? 'bg-sky-500 text-white' : 'text-slate-400 hover:text-white'
                 }`}
               >
-                Bulk Multi-Episode Links
+                Bulk All Episodes ({totalEpCount})
               </button>
             </div>
 
-            <span className="text-[10px] text-slate-400">
-              Paste Google Drive, Mega, MP4, or embed links
+            <span className="text-[11px] text-emerald-400 font-semibold hidden sm:inline">
+              ⚡ Google Drive links automatically convert to player preview!
             </span>
           </div>
 
           {editorTab === 'single' ? (
-            <form onSubmit={handleSaveSingleLink} className="flex flex-col sm:flex-row gap-2">
-              <input
-                type="url"
-                placeholder={`Paste Google Drive / Video link for Episode ${currentEpisode}...`}
-                value={singleLinkInput}
-                onChange={(e) => setSingleLinkInput(e.target.value)}
-                className="flex-1 bg-[#151f2e] border border-[#1e293b] rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
-              />
-              <div className="flex gap-2">
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs rounded-xl shadow-md transition-all whitespace-nowrap"
-                >
-                  Save Episode {currentEpisode} Link
-                </button>
-                {videoLinks[currentEpisode] && (
+            <form onSubmit={handleSaveSingleLink} className="space-y-2">
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="url"
+                  placeholder={`Paste Google Drive link for Episode ${currentEpisode} (e.g. https://drive.google.com/file/d/.../view)...`}
+                  value={singleLinkInput}
+                  onChange={(e) => setSingleLinkInput(e.target.value)}
+                  required
+                  className="flex-1 bg-[#151f2e] border border-[#1e293b] rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                />
+                <div className="flex gap-2">
                   <button
-                    type="button"
-                    onClick={() => handleClearEpisodeLink(currentEpisode)}
-                    className="p-2 bg-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-white rounded-xl text-xs transition-colors"
-                    title="Remove link for this episode"
+                    type="submit"
+                    className="px-5 py-2.5 bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs rounded-xl shadow-md transition-all whitespace-nowrap"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    Save & Play Episode {currentEpisode}
                   </button>
-                )}
+                  {videoLinks[currentEpisode] && (
+                    <button
+                      type="button"
+                      onClick={() => handleClearEpisodeLink(currentEpisode)}
+                      className="p-2.5 bg-rose-500/20 text-rose-400 hover:bg-rose-500 hover:text-white rounded-xl text-xs transition-colors"
+                      title="Remove link for this episode"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
               </div>
+              <p className="text-[11px] text-slate-400">
+                You can paste Google Drive share links, direct MP4 links, YouTube videos, or Mega links. Saved to your personal account.
+              </p>
             </form>
           ) : (
             <form onSubmit={handleSaveBulkLinks} className="space-y-2">
               <textarea
-                rows={3}
-                placeholder={"Paste multiple episode links, one per line:\nEpisode 1: https://drive.google.com/file/d/...\nEpisode 2: https://drive.google.com/file/d/...\n(or simply paste 1 URL per line)"}
+                rows={4}
+                placeholder={"Paste links for multiple episodes, one per line:\nEpisode 1: https://drive.google.com/file/d/...\nEpisode 2: https://drive.google.com/file/d/...\n(or simply paste 1 link per line, starting from Episode 1)"}
                 value={bulkInput}
                 onChange={(e) => setBulkInput(e.target.value)}
                 className="w-full bg-[#151f2e] border border-[#1e293b] rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
@@ -261,58 +305,129 @@ export default function AnimeVideoPlayer({
         ) : (
           /* Empty State when no video link is set */
           <div className="text-center p-6 max-w-md">
-            <div className="w-14 h-14 rounded-2xl bg-[#151f2e] border border-[#1e293b] flex items-center justify-center text-slate-500 mx-auto mb-3 shadow-inner">
-              <Film className="w-7 h-7 text-sky-400 opacity-60" />
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-sky-500/20 to-indigo-500/20 border border-sky-500/30 flex items-center justify-center text-sky-400 mx-auto mb-3 shadow-lg">
+              <Play className="w-8 h-8 fill-sky-400 ml-1" />
             </div>
-            <h4 className="text-white font-bold text-sm mb-1">
-              No play link added for Episode {currentEpisode}
+            <h4 className="text-white font-black text-base mb-1">
+              No Video Link Set for Episode {currentEpisode}
             </h4>
-            <p className="text-xs text-slate-400 mb-4">
-              You can attach your Google Drive video link, direct MP4 file, or any web stream link. It will be saved permanently to your personal account.
+            <p className="text-xs text-slate-300 mb-4 leading-relaxed">
+              Add your <strong>Google Drive link</strong> for this episode. It will play directly in this screen and be saved to your personal account.
             </p>
             <button
               onClick={() => { setShowLinkEditor(true); setEditorTab('single'); }}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs shadow-lg shadow-sky-500/20 transition-all hover:scale-105"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-white font-extrabold text-xs shadow-lg shadow-sky-500/20 transition-all hover:scale-105"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Attach Google Drive / Video Link</span>
+              <Plus className="w-4 h-4" />
+              <span>Add Google Drive Link (Episode {currentEpisode})</span>
             </button>
           </div>
         )}
       </div>
 
-      {/* Bottom Episode Quick Switcher Bar */}
+      {/* Bottom Episode Selector & Episode Count Bar */}
       <div className="p-4 bg-[#0e1724] border-t border-[#1e293b]">
         
-        <div className="flex items-center justify-between mb-2.5">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-extrabold text-slate-300 uppercase tracking-wider">
-              Episodes ({episodeList.length})
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
+              <Film className="w-3.5 h-3.5 text-sky-400" />
+              <span>All Episodes ({totalEpCount} Total)</span>
             </span>
             {totalLinkedEpisodes > 0 && (
-              <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                {totalLinkedEpisodes} available to play
+              <span className="text-[10px] text-emerald-400 font-extrabold bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                {totalLinkedEpisodes} Playable
               </span>
             )}
           </div>
 
-          {/* Quick "Mark as Watched" */}
-          <button
-            onClick={() => onUpdateProgress(currentEpisode)}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold transition-all ${
-              (userEntry?.progress || 0) >= currentEpisode
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                : 'bg-[#151f2e] text-slate-300 border border-[#1e293b] hover:border-emerald-500 hover:text-emerald-400'
-            }`}
-          >
-            <Check className="w-3.5 h-3.5" />
-            <span>{(userEntry?.progress || 0) >= currentEpisode ? `Watched (Ep ${currentEpisode})` : `Mark Ep ${currentEpisode} Watched`}</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            
+            {/* Prev / Next Episode Buttons */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={handlePrevEpisode}
+                disabled={currentEpisode <= 1}
+                className="p-1.5 rounded-lg bg-[#151f2e] text-slate-300 hover:text-white border border-[#1e293b] disabled:opacity-40 disabled:cursor-not-allowed text-xs flex items-center gap-1"
+                title="Previous Episode"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Prev</span>
+              </button>
+              <button
+                onClick={handleNextEpisode}
+                disabled={currentEpisode >= totalEpCount}
+                className="p-1.5 rounded-lg bg-[#151f2e] text-slate-300 hover:text-white border border-[#1e293b] disabled:opacity-40 disabled:cursor-not-allowed text-xs flex items-center gap-1"
+                title="Next Episode"
+              >
+                <span className="hidden sm:inline">Next</span>
+                <SkipForward className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Quick Episode Jump Input */}
+            {totalEpCount > 20 && (
+              <div className="relative">
+                <input
+                  type="number"
+                  min="1"
+                  max={totalEpCount}
+                  placeholder="Jump Ep #"
+                  value={searchEp}
+                  onChange={(e) => setSearchEp(e.target.value)}
+                  className="w-24 bg-[#151f2e] border border-[#1e293b] rounded-lg px-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                />
+              </div>
+            )}
+
+            {/* Quick "Mark as Watched" */}
+            <button
+              onClick={() => onUpdateProgress(currentEpisode)}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold transition-all ${
+                (userEntry?.progress || 0) >= currentEpisode
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                  : 'bg-[#151f2e] text-slate-300 border border-[#1e293b] hover:border-emerald-500 hover:text-emerald-400'
+              }`}
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>{(userEntry?.progress || 0) >= currentEpisode ? `Watched (Ep ${currentEpisode})` : `Mark Ep ${currentEpisode} Watched`}</span>
+            </button>
+          </div>
         </div>
 
-        {/* Episode Pills List */}
+        {/* Range Chunks for large anime (e.g. Black Clover with 170 episodes) */}
+        {chunkRanges.length > 0 && !searchEp.trim() && (
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-2 scrollbar-thin">
+            <span className="text-[10px] font-bold text-slate-500 uppercase mr-1">Range:</span>
+            <button
+              onClick={() => setActiveChunk('all')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all border ${
+                activeChunk === 'all'
+                  ? 'bg-sky-500 text-white border-sky-400'
+                  : 'bg-[#0b1622] text-slate-400 border-[#1e293b] hover:text-white'
+              }`}
+            >
+              All ({totalEpCount})
+            </button>
+            {chunkRanges.map((chunk) => (
+              <button
+                key={chunk.label}
+                onClick={() => setActiveChunk(chunk.label)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all border ${
+                  activeChunk === chunk.label
+                    ? 'bg-sky-500 text-white border-sky-400'
+                    : 'bg-[#0b1622] text-slate-400 border-[#1e293b] hover:text-white'
+                }`}
+              >
+                {chunk.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Horizontal Episode Buttons */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
-          {episodeList.map((epNum) => {
+          {displayedEpisodes.map((epNum) => {
             const hasLink = Boolean(videoLinks[epNum]);
             const isCurrent = epNum === currentEpisode;
             const isWatched = (userEntry?.progress || 0) >= epNum;
@@ -325,8 +440,8 @@ export default function AnimeVideoPlayer({
                   isCurrent
                     ? 'bg-sky-500 text-white border-sky-400 shadow-md shadow-sky-500/20 scale-105'
                     : hasLink
-                    ? 'bg-[#151f2e] text-slate-200 border-sky-500/40 hover:border-sky-400'
-                    : 'bg-[#0b1622] text-slate-500 border-[#1e293b] hover:text-slate-300'
+                    ? 'bg-[#151f2e] text-slate-100 border-sky-500/40 hover:border-sky-400'
+                    : 'bg-[#0b1622] text-slate-400 border-[#1e293b] hover:text-slate-200'
                 }`}
               >
                 <span>Ep {epNum}</span>
