@@ -6,14 +6,19 @@ import MediaDetailModal from './components/MediaDetailModal';
 import MyListView from './components/MyListView';
 import StatsView from './components/StatsView';
 import ImportExportModal from './components/ImportExportModal';
+import CommunityView from './components/CommunityView';
+import AuthModal from './components/AuthModal';
+import UserProfileModal from './components/UserProfileModal';
 
 import { searchMedia } from './services/anilistApi';
 import { FALLBACK_ANIME, FALLBACK_MANGA } from './services/fallbackData';
 import { getStoredLists, upsertEntry, TRACKING_STATUS } from './services/storage';
+import { onAuthStateChange, getCurrentUser, getProfile } from './services/auth';
+import { pushLocalListToCloud, pullCloudListToLocal, upsertCloudEntry } from './services/database';
 import { Loader2, AlertCircle, RefreshCw, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('browse'); // 'browse' | 'mylist' | 'stats'
+  const [activeTab, setActiveTab] = useState('browse'); // 'browse' | 'mylist' | 'community' | 'stats'
   const [mediaType, setMediaType] = useState('ANIME'); // 'ANIME' | 'MANGA'
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -35,6 +40,12 @@ export default function App() {
   // Active Modals
   const [selectedMedia, setSelectedMedia] = useState(null);
   const [showImportExport, setShowImportExport] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
+  // User & Auth State
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
 
   // Stored Tracking Lists
   const [userLists, setUserLists] = useState(getStoredLists());
@@ -42,6 +53,52 @@ export default function App() {
   // Reload user lists when changed
   const reloadLists = useCallback(() => {
     setUserLists(getStoredLists());
+  }, []);
+
+  // Listen to Auth state and sync lists
+  useEffect(() => {
+    async function initAuth() {
+      try {
+        const currentUser = await getCurrentUser();
+        if (currentUser) {
+          setUser(currentUser);
+          const p = await getProfile(currentUser.id);
+          setProfile(p);
+          // Sync lists from cloud
+          const cloudLists = await pullCloudListToLocal(currentUser.id);
+          if (cloudLists && Object.keys(cloudLists).length > 0) {
+            setUserLists(cloudLists);
+          } else {
+            // Push local to cloud if cloud is empty
+            await pushLocalListToCloud(currentUser.id);
+          }
+        }
+      } catch (e) {
+        console.warn("Auth initialization note:", e);
+      }
+    }
+    initAuth();
+
+    const { data: { subscription } } = onAuthStateChange(async (event, session) => {
+      const u = session?.user || null;
+      setUser(u);
+      if (u) {
+        const p = await getProfile(u.id);
+        setProfile(p);
+        const cloudLists = await pullCloudListToLocal(u.id);
+        if (cloudLists && Object.keys(cloudLists).length > 0) {
+          setUserLists(cloudLists);
+        } else {
+          await pushLocalListToCloud(u.id);
+        }
+      } else {
+        setProfile(null);
+      }
+    });
+
+    return () => {
+      if (subscription?.unsubscribe) subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -57,7 +114,7 @@ export default function App() {
     const handlePopState = (e) => {
       const state = e.state;
       if (state && state.modal === 'media' && state.mediaId) {
-        // Find media or keep current
+        // Media modal
       } else if (state && state.modal === 'backup') {
         setShowImportExport(true);
         setSelectedMedia(null);
@@ -173,11 +230,14 @@ export default function App() {
     if (existing) {
       openMediaModal(media);
     } else {
-      upsertEntry(media, {
+      const updated = upsertEntry(media, {
         status: TRACKING_STATUS.CURRENT,
         progress: 0,
         score: 0,
       });
+      if (user) {
+        upsertCloudEntry(user.id, updated);
+      }
       reloadLists();
     }
   };
@@ -197,6 +257,10 @@ export default function App() {
         setSearchQuery={(q) => { setSearchQuery(q); setPage(1); }}
         onOpenImportExport={openBackupModal}
         trackedCount={trackedCount}
+        user={user}
+        profile={profile}
+        onOpenAuth={() => setShowAuthModal(true)}
+        onOpenProfile={() => setShowProfileModal(true)}
       />
 
       {/* Main Container */}
@@ -328,7 +392,14 @@ export default function App() {
           />
         )}
 
-        {/* Tab 3: Stats */}
+        {/* Tab 3: Community Rankings */}
+        {activeTab === 'community' && (
+          <CommunityView
+            onSelectMedia={(m) => openMediaModal(m)}
+          />
+        )}
+
+        {/* Tab 4: Stats */}
         {activeTab === 'stats' && (
           <StatsView
             onBackToBrowse={() => navigateToTab('browse')}
@@ -365,6 +436,28 @@ export default function App() {
         <ImportExportModal
           onClose={closeBackupModal}
           onImported={reloadLists}
+        />
+      )}
+
+      {/* Sign In / Sign Up Modal */}
+      {showAuthModal && (
+        <AuthModal
+          onClose={() => setShowAuthModal(false)}
+          onSuccess={() => setShowAuthModal(false)}
+        />
+      )}
+
+      {/* User Profile & Account Modal */}
+      {showProfileModal && user && (
+        <UserProfileModal
+          user={user}
+          profile={profile}
+          onClose={() => setShowProfileModal(false)}
+          onSignOut={() => { setUser(null); setProfile(null); }}
+          onUpdated={async () => {
+            const p = await getProfile(user.id);
+            setProfile(p);
+          }}
         />
       )}
 
