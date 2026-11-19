@@ -43,7 +43,7 @@ export default function CustomVideoPlayer({
   // Quick In-Player Link Input State
   const [quickLinkInput, setQuickLinkInput] = useState('');
   const [showQuickInput, setShowQuickInput] = useState(false);
-  const [viewingFolderEmbed, setViewingFolderEmbed] = useState(false);
+  const [userForceFolderView, setUserForceFolderView] = useState(false);
 
   // Playback State (for direct HTML5 video)
   const [isPlaying, setIsPlaying] = useState(false);
@@ -383,8 +383,8 @@ export default function CustomVideoPlayer({
       className="relative aspect-video w-full bg-black overflow-hidden select-none group flex items-center justify-center"
     >
 
-      {/* ── CASE 1: USER IS VIEWING GOOGLE DRIVE FOLDER FILES ── */}
-      {viewingFolderEmbed && driveFolderId ? (
+      {/* ── CASE 1: USER EXPLICITLY SWITCHED TO VIEW GOOGLE DRIVE FOLDER ── */}
+      {userForceFolderView && driveFolderId ? (
         <div className="relative w-full h-full bg-black">
           <iframe
             src={`https://drive.google.com/embeddedfolderview?id=${driveFolderId}#list`}
@@ -467,6 +467,42 @@ export default function CustomVideoPlayer({
             </button>
           )}
         </>
+      ) : driveFolderId ? (
+        /* ── CASE 5: GOOGLE DRIVE FOLDER CONNECTED (Show Folder Files & Quick Episode Linker) ── */
+        <div className="relative w-full h-full bg-black">
+          <iframe
+            src={`https://drive.google.com/embeddedfolderview?id=${driveFolderId}#list`}
+            title={formattedEpTitle}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+            className="w-full h-full border-0 pt-11 pb-16"
+          />
+
+          {/* Bottom Quick-Input Bar while browsing Drive folder */}
+          <div className="absolute bottom-2 left-2 right-2 z-30 bg-[#0b1622]/95 border border-sky-500/50 backdrop-blur rounded-2xl p-2.5 shadow-2xl flex flex-wrap items-center justify-between gap-2 text-xs">
+            <span className="text-slate-300 font-bold flex items-center gap-1.5 min-w-0">
+              <Sparkles className="w-4 h-4 text-sky-400 flex-shrink-0" />
+              <span className="truncate">Right-click video for <strong>Episode {episodeNum}</strong> in Drive ➔ Copy link ➔ Paste here:</span>
+            </span>
+            <form onSubmit={handleQuickSaveLink} className="flex items-center gap-1.5 flex-1 max-w-md">
+              <input
+                type="text"
+                placeholder="https://drive.google.com/file/d/.../view"
+                value={quickLinkInput}
+                onChange={(e) => setQuickLinkInput(e.target.value)}
+                required
+                className="flex-1 bg-[#151f2e] border border-[#1e293b] rounded-xl px-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
+              />
+              <button
+                type="submit"
+                className="px-3.5 py-1.5 bg-sky-500 hover:bg-sky-400 text-white font-black rounded-xl shadow transition-all flex items-center gap-1 flex-shrink-0"
+              >
+                <Play className="w-3.5 h-3.5 fill-white" />
+                <span>Play Ep {episodeNum}</span>
+              </button>
+            </form>
+          </div>
+        </div>
       ) : (
         /* ── CASE 5: READY TO PLAY EPISODE (Interactive Episode Deck) ── */
         <div className="relative w-full h-full flex items-center justify-center p-4 overflow-hidden">
@@ -575,7 +611,7 @@ export default function CustomVideoPlayer({
         {/* Left: Episode Title & Dropdown Switcher */}
         <div className="flex items-center gap-2 max-w-[65%]">
           <span className="px-2 py-0.5 rounded bg-sky-500/80 text-white text-[10px] font-extrabold uppercase flex-shrink-0 flex items-center gap-1">
-            {viewingFolderEmbed ? '📁 Drive Folder' : isGoogleDriveFile ? '📁 Drive Video' : embedInfo?.type === 'youtube' ? '▶ YouTube' : isDirectVideo ? '⚡ Video' : googleDriveFolderUrl ? '📁 Drive Series' : '▶ Video Player'}
+            {userForceFolderView ? '📁 Drive Folder' : isGoogleDriveFile ? '📁 Drive Video' : embedInfo?.type === 'youtube' ? '▶ YouTube' : isDirectVideo ? '⚡ Video' : driveFolderId ? '📁 Drive Series' : '▶ Video Player'}
           </span>
 
           {/* Episode Switcher Dropdown (Where Episode 12 is written) */}
@@ -604,7 +640,7 @@ export default function CustomVideoPlayer({
                     onClick={() => {
                       if (onSelectEpisode) onSelectEpisode(ep.num);
                       setShowEpDropdown(false);
-                      setViewingFolderEmbed(false);
+                      setUserForceFolderView(false);
                     }}
                     className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all text-left mb-1 ${
                       ep.num === episodeNum
@@ -627,16 +663,16 @@ export default function CustomVideoPlayer({
           {/* If Google Drive Folder exists: Toggle between Episode Video and Drive Files List */}
           {driveFolderId && (
             <button
-              onClick={() => setViewingFolderEmbed(!viewingFolderEmbed)}
+              onClick={() => setUserForceFolderView(!userForceFolderView)}
               className={`flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold backdrop-blur border transition-all ${
-                viewingFolderEmbed 
+                userForceFolderView 
                   ? 'bg-sky-500 text-white border-sky-400 shadow' 
                   : 'bg-black/60 hover:bg-black text-slate-200 border-white/20'
               }`}
               title="Toggle between Episode Video Player and Drive Folder View"
             >
               <Folder className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">{viewingFolderEmbed ? 'Play Video' : 'Drive Files'}</span>
+              <span className="hidden sm:inline">{userForceFolderView ? 'Play Video' : 'Drive Files'}</span>
             </button>
           )}
 
