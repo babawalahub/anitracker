@@ -8,8 +8,9 @@ import {
 import { 
   cleanUrl, 
   formatEmbedUrl, 
-  parseMultipleVideoEntries,
-  formatEpisodeTitle
+  parseMultipleVideoEntries, 
+  formatEpisodeTitle,
+  fetchDriveTitle
 } from '../services/videoHelper';
 import CustomVideoPlayer from './CustomVideoPlayer';
 
@@ -95,8 +96,8 @@ export default function AnimeVideoPlayer({
     return true;
   });
 
-  // Handler 1: Generate All Episodes from Google Drive Link & File List
-  const handleGenerateFromDrive = (e) => {
+  // Handler 1: Generate All Episodes from Google Drive Link & File List (Auto-fetches Drive titles)
+  const handleGenerateFromDrive = async (e) => {
     e.preventDefault();
     const cleanedLink = cleanUrl(driveMainLink);
     const targetCount = parseInt(driveEpCount, 10) || totalEpCount || 12;
@@ -127,14 +128,33 @@ export default function AnimeVideoPlayer({
     } else {
       // Auto-generate based on series count with formatted padded name: S01E01 to S01E12
       for (let i = 1; i <= targetCount; i++) {
-        newTitles[i] = formatEpisodeTitle(seriesName, i);
+        if (!newTitles[i]) {
+          newTitles[i] = formatEpisodeTitle(seriesName, i);
+        }
       }
     }
 
-    // If cleanedLink is a direct single file link (not a folder), assign it to Episode 1
+    // If cleanedLink is a direct single file link (not a folder), assign it to Episode 1 and fetch title
     if (cleanedLink && !cleanedLink.includes('/folders/') && !cleanedLink.includes('folderview')) {
       newLinks[1] = cleanedLink;
+      const driveTitle = await fetchDriveTitle(cleanedLink);
+      if (driveTitle) {
+        newTitles[1] = formatEpisodeTitle(seriesName, 1, driveTitle);
+      }
     }
+
+    // Auto-fetch Google Drive titles for all links without custom titles
+    await Promise.all(
+      Object.entries(newLinks).map(async ([ep, link]) => {
+        const epNum = parseInt(ep, 10);
+        if (!newTitles[epNum] || newTitles[epNum] === formatEpisodeTitle(seriesName, epNum)) {
+          const fetched = await fetchDriveTitle(link);
+          if (fetched) {
+            newTitles[epNum] = formatEpisodeTitle(seriesName, epNum, fetched);
+          }
+        }
+      })
+    );
 
     setVideoLinks(newLinks);
     setVideoTitles(newTitles);
@@ -145,8 +165,8 @@ export default function AnimeVideoPlayer({
     setShowLinkEditor(false);
   };
 
-  // Handler 2: Save Single Episode Link & Title
-  const handleSaveSingle = (e) => {
+  // Handler 2: Save Single Episode Link & Title (Auto-fetches title from Google Drive)
+  const handleSaveSingle = async (e) => {
     e.preventDefault();
     const cleaned = cleanUrl(singleLinkInput);
 
@@ -155,9 +175,15 @@ export default function AnimeVideoPlayer({
 
     if (cleaned) {
       updatedLinks[currentEpisode] = cleaned;
-      if (singleTitleInput.trim()) {
-        updatedTitles[currentEpisode] = formatEpisodeTitle(seriesName, currentEpisode, singleTitleInput.trim());
+      let finalTitle = singleTitleInput.trim();
+
+      // Auto-fetch title from Google Drive if title is blank or generic
+      if (!finalTitle || finalTitle === formatEpisodeTitle(seriesName, currentEpisode)) {
+        const fetched = await fetchDriveTitle(cleaned);
+        if (fetched) finalTitle = fetched;
       }
+
+      updatedTitles[currentEpisode] = formatEpisodeTitle(seriesName, currentEpisode, finalTitle);
     } else {
       delete updatedLinks[currentEpisode];
       delete updatedTitles[currentEpisode];
@@ -169,8 +195,8 @@ export default function AnimeVideoPlayer({
     setShowLinkEditor(false);
   };
 
-  // Handler 3: Save Bulk Episodes with Titles
-  const handleSaveBulk = (e) => {
+  // Handler 3: Save Bulk Episodes with Titles (Auto-fetches Google Drive titles)
+  const handleSaveBulk = async (e) => {
     e.preventDefault();
     const { links: parsedLinks, titles: parsedTitles, folderUrl: parsedFolder } = parseMultipleVideoEntries(bulkInput, 1);
     
@@ -185,6 +211,16 @@ export default function AnimeVideoPlayer({
       const epNum = parseInt(ep, 10);
       if (epNum && l && !l.includes('/folders/')) updatedLinks[epNum] = l;
     });
+
+    // Auto-fetch Drive titles for any episode links pasted without titles
+    for (const [ep, link] of Object.entries(updatedLinks)) {
+      if (!updatedTitles[ep] || updatedTitles[ep] === formatEpisodeTitle(seriesName, ep)) {
+        const fetched = await fetchDriveTitle(link);
+        if (fetched) {
+          updatedTitles[ep] = formatEpisodeTitle(seriesName, ep, fetched);
+        }
+      }
+    }
 
     const finalFolder = parsedFolder || googleDriveFolderUrl;
 
@@ -208,13 +244,24 @@ export default function AnimeVideoPlayer({
     onSaveLinks(updatedLinks, updatedLinks[1] || '', updatedTitles, googleDriveFolderUrl);
   };
 
-  // Handler: Save link directly from in-player input
-  const handleSaveEpisodeLink = (epNum, linkUrl) => {
+  // Handler: Save link directly from in-player input (Auto-fetches title from Google Drive)
+  const handleSaveEpisodeLink = async (epNum, linkUrl) => {
     const cleaned = cleanUrl(linkUrl);
     if (!cleaned) return;
     const updatedLinks = { ...videoLinks, [epNum]: cleaned };
+    const updatedTitles = { ...videoTitles };
+
+    // Auto-fetch title from Google Drive!
+    const fetchedTitle = await fetchDriveTitle(cleaned);
+    if (fetchedTitle) {
+      updatedTitles[epNum] = formatEpisodeTitle(seriesName, epNum, fetchedTitle);
+    } else if (!updatedTitles[epNum]) {
+      updatedTitles[epNum] = formatEpisodeTitle(seriesName, epNum);
+    }
+
+    setVideoTitles(updatedTitles);
     setVideoLinks(updatedLinks);
-    onSaveLinks(updatedLinks, updatedLinks[1] || cleaned, videoTitles, googleDriveFolderUrl);
+    onSaveLinks(updatedLinks, updatedLinks[1] || cleaned, updatedTitles, googleDriveFolderUrl);
   };
 
   const handleNextEpisode = () => {
@@ -590,19 +637,21 @@ export default function AnimeVideoPlayer({
         </span>
         {allEpisodeNumbers.map((ep) => {
           const epTitle = videoTitles[ep] || formatEpisodeTitle(seriesName, ep);
+          const hasLink = Boolean(videoLinks[ep]);
           const shortTitle = epTitle.includes('-') ? epTitle.split('-').slice(1).join('-').trim() : `Ep ${ep}`;
 
           return (
             <button
               key={ep}
               onClick={() => setCurrentEpisode(ep)}
-              className={`px-3 py-1 rounded-xl text-xs font-black whitespace-nowrap transition-all border flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-black whitespace-nowrap transition-all border flex items-center gap-1.5 ${
                 ep === currentEpisode
                   ? 'bg-sky-500 text-white border-sky-400 shadow-md shadow-sky-500/30 scale-105'
                   : 'bg-[#151f2e] text-slate-300 border-[#1e293b] hover:border-sky-500/50 hover:text-white'
               }`}
               title={epTitle}
             >
+              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${hasLink ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'bg-slate-600'}`} />
               <span>Ep {ep}</span>
               <span className="text-[10px] opacity-80 max-w-[140px] truncate hidden sm:inline">
                 {shortTitle}

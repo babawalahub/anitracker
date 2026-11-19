@@ -30,6 +30,42 @@ export function formatEpisodeTitle(seriesName, episodeNum, customTitle) {
   return `${cleanSeries} - S01E${epStr}`;
 }
 
+// Fetch Google Drive title from Drive URL via server proxy
+export async function fetchDriveTitle(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  const url = cleanUrl(rawUrl);
+  if (!url) return null;
+
+  // Check if filename is already contained in URL text
+  const matchFile = url.match(/([^/\\&?]+)\.(?:mkv|mp4|webm|avi|mov)$/i);
+  if (matchFile && matchFile[1]) {
+    return decodeURIComponent(matchFile[1]).trim();
+  }
+
+  if (!url.includes('drive.google.com') && !url.includes('docs.google.com')) {
+    return null;
+  }
+
+  try {
+    const res = await fetch(`/api/fetch-drive-title?url=${encodeURIComponent(url)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.title) {
+        let clean = data.title.replace(/\.(mkv|mp4|webm|avi|mov)$/i, '').trim();
+        const invalidTitles = ['error', 'not found', '404', '403', 'page not found', 'google drive', 'google docs', 'access denied', 'sign in', 'login'];
+        const isBad = invalidTitles.some(token => clean.toLowerCase().includes(token));
+        if (!isBad && clean.length > 0) {
+          return clean;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Could not fetch Drive title:", err);
+  }
+
+  return null;
+}
+
 export function formatEmbedUrl(rawUrl) {
   if (!rawUrl || typeof rawUrl !== 'string') return null;
   const url = cleanUrl(rawUrl);

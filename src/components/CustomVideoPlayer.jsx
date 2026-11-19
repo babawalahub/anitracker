@@ -43,6 +43,7 @@ export default function CustomVideoPlayer({
   // Quick In-Player Link Input State
   const [quickLinkInput, setQuickLinkInput] = useState('');
   const [showQuickInput, setShowQuickInput] = useState(false);
+  const [isSavingQuickLink, setIsSavingQuickLink] = useState(false);
   const [streamSource, setStreamSource] = useState('auto'); // 'auto' | 'online' | 'drive_folder'
   const [localFileBlobUrl, setLocalFileBlobUrl] = useState(null);
   const [localFileName, setLocalFileName] = useState('');
@@ -51,6 +52,7 @@ export default function CustomVideoPlayer({
   useEffect(() => {
     setLocalFileBlobUrl(null);
     setLocalFileName('');
+    setStreamSource('auto');
   }, [episodeNum]);
 
   const handleLocalFileSelect = (e) => {
@@ -99,13 +101,19 @@ export default function CustomVideoPlayer({
   const formattedEpTitle = title || formatEpisodeTitle(animeTitle, episodeNum);
 
   // Quick save link handler (when user pastes link right inside player)
-  const handleQuickSaveLink = (e) => {
-    e.preventDefault();
+  const handleQuickSaveLink = async (e) => {
+    if (e) e.preventDefault();
     const cleaned = cleanUrl(quickLinkInput);
     if (cleaned && onSaveEpisodeLink) {
-      onSaveEpisodeLink(episodeNum, cleaned);
-      setQuickLinkInput('');
-      setShowQuickInput(false);
+      try {
+        setIsSavingQuickLink(true);
+        await onSaveEpisodeLink(episodeNum, cleaned);
+        setQuickLinkInput('');
+        setShowQuickInput(false);
+        setStreamSource('auto');
+      } finally {
+        setIsSavingQuickLink(false);
+      }
     }
   };
 
@@ -527,56 +535,93 @@ export default function CustomVideoPlayer({
           )}
         </>
       ) : (
-        /* ── CASE 6: ONLINE EPISODE STREAM (ALWAYS PLAYABLE INSTANTLY) ── */
-        <div className="relative w-full h-full bg-black">
-          <iframe
-            src={onlineEpisodeSearchUrl}
-            title={formattedEpTitle}
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowFullScreen
-            className="w-full h-full border-0 pt-10"
-          />
+        /* ── CASE 6: EPISODE STREAMING & SETUP DECK ── */
+        <div className="relative w-full h-full bg-gradient-to-b from-[#0b1424] via-[#090f19] to-[#04070d] flex flex-col items-center justify-center p-6 text-center select-none overflow-hidden">
+          {/* Subtle ambient glow */}
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(14,165,233,0.15)_0%,transparent_70%)] pointer-events-none" />
 
-          {/* Bottom Floating Bar with Instant Options */}
-          <div className="absolute bottom-2 left-2 right-2 z-30 bg-[#0b1622]/95 border border-sky-500/50 backdrop-blur rounded-2xl p-2 shadow-2xl flex flex-wrap items-center justify-between gap-2 text-xs">
-            <span className="text-slate-300 font-bold flex items-center gap-1.5 min-w-0">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
-              <span className="truncate">Playing <strong>{formattedEpTitle}</strong> Online</span>
-            </span>
+          {/* Episode Info Badge */}
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-500/30 text-sky-400 text-xs font-black mb-3 shadow">
+            <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+            <span>Episode {episodeNum} of {totalEpisodes}</span>
+          </div>
 
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="px-2.5 py-1 bg-[#151f2e] hover:bg-sky-500 hover:text-white text-sky-400 rounded-xl font-bold flex items-center gap-1 border border-sky-500/30 transition-all text-[11px]"
-                title="Play MKV or MP4 video file from your computer"
-              >
-                <Upload className="w-3 h-3" />
-                <span>Play PC File</span>
-              </button>
+          <h3 className="text-lg sm:text-2xl font-black text-white max-w-xl truncate mb-2">
+            {formattedEpTitle}
+          </h3>
 
-              <button
-                type="button"
-                onClick={() => setShowQuickInput(true)}
-                className="px-2.5 py-1 bg-[#151f2e] hover:bg-sky-500 hover:text-white text-slate-300 rounded-xl font-bold flex items-center gap-1 border border-[#1e293b] transition-all text-[11px]"
-                title="Paste Drive or video link"
-              >
-                <LinkIcon className="w-3 h-3" />
-                <span>Paste Link</span>
-              </button>
+          <p className="text-xs text-slate-300 max-w-md mb-6 leading-relaxed">
+            {driveFolderId 
+              ? 'Paste the Google Drive video link for this episode below to auto-fetch its title and stream in the player!'
+              : 'Paste your Google Drive link or video URL below. AniTrack will automatically fetch the exact episode title from Drive!'}
+          </p>
 
-              {driveFolderId && (
-                <button
-                  type="button"
-                  onClick={() => setStreamSource('drive_folder')}
-                  className="px-2.5 py-1 bg-sky-500/20 hover:bg-sky-500 text-sky-300 hover:text-white rounded-xl font-bold flex items-center gap-1 border border-sky-500/40 transition-all text-[11px]"
-                  title="View your Google Drive folder files"
-                >
-                  <Folder className="w-3 h-3" />
-                  <span>Drive Files</span>
-                </button>
-              )}
+          {/* Direct Episode Video Paste Form */}
+          <form onSubmit={handleQuickSaveLink} className="w-full max-w-lg flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mb-5">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                placeholder="Paste Google Drive video link (https://drive.google.com/file/d/...)"
+                value={quickLinkInput}
+                onChange={(e) => setQuickLinkInput(e.target.value)}
+                required
+                className="w-full bg-[#151f2e] border border-sky-500/40 rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-400 font-mono shadow-inner"
+              />
             </div>
+            <button
+              type="submit"
+              disabled={isSavingQuickLink}
+              className="px-5 py-2.5 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 disabled:opacity-50 text-white font-black text-xs rounded-xl shadow-lg shadow-sky-500/30 transition-all flex items-center justify-center gap-1.5 flex-shrink-0"
+            >
+              {isSavingQuickLink ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Fetching Title...</span>
+                </>
+              ) : (
+                <>
+                  <Play className="w-3.5 h-3.5 fill-white" />
+                  <span>Fetch Title & Play Ep {episodeNum}</span>
+                </>
+              )}
+            </button>
+          </form>
+
+          {/* Action Buttons: PC File, Drive Files, Open Drive */}
+          <div className="flex flex-wrap items-center justify-center gap-2.5 text-xs">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="px-3 py-2 rounded-xl bg-[#151f2e] hover:bg-sky-500 hover:text-white text-sky-400 border border-sky-500/30 transition-all font-bold flex items-center gap-1.5"
+              title="Play MKV or MP4 video file from your computer with dual audio & subtitles"
+            >
+              <Upload className="w-3.5 h-3.5" />
+              <span>Play Local File</span>
+            </button>
+
+            {driveFolderId && (
+              <button
+                type="button"
+                onClick={() => setStreamSource('drive_folder')}
+                className="px-3 py-2 rounded-xl bg-sky-500/20 hover:bg-sky-500 hover:text-white text-sky-300 border border-sky-500/40 transition-all font-bold flex items-center gap-1.5"
+                title="Browse and pick files from your Google Drive folder"
+              >
+                <Folder className="w-3.5 h-3.5" />
+                <span>Browse Drive Folder</span>
+              </button>
+            )}
+
+            {googleDriveFolderUrl && (
+              <a
+                href={googleDriveFolderUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-2 rounded-xl bg-[#151f2e] hover:bg-[#1e293b] text-slate-300 hover:text-white border border-[#1e293b] transition-all font-bold flex items-center gap-1.5"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Open in Drive</span>
+              </a>
+            )}
           </div>
         </div>
       )}
