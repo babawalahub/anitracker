@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { 
   Play, Plus, Check, Star, Link as LinkIcon, ExternalLink, 
   Trash2, AlertCircle, Sparkles, Film, ChevronRight, Layers, Search, 
-  SkipForward, ChevronLeft, Folder, List, Edit2, Info, Eye, CheckCircle2
+  SkipForward, ChevronLeft, Folder, List, Edit2, Info, Eye, CheckCircle2,
+  Tv, Sliders
 } from 'lucide-react';
 import { cleanUrl, formatEmbedUrl, parseMultipleVideoEntries } from '../services/videoHelper';
+import CustomVideoPlayer from './CustomVideoPlayer';
 
 export default function AnimeVideoPlayer({
   media,
@@ -24,6 +26,7 @@ export default function AnimeVideoPlayer({
 
   const [currentEpisode, setCurrentEpisode] = useState(Math.max(1, userEntry?.progress || 1));
   const [playerViewMode, setPlayerViewMode] = useState(initialFolder && Object.keys(initialLinks).length === 0 ? 'folder' : 'video');
+  const [playerEngine, setPlayerEngine] = useState('custom'); // 'custom' (Dual Audio & AI Subtitles) | 'iframe' (Drive Embed)
   const [filterMode, setFilterMode] = useState('all'); // 'all' | 'playable' | 'watched'
 
   // Modal / Editor State
@@ -208,6 +211,36 @@ export default function AnimeVideoPlayer({
         {/* Right Actions: Mode Switch, Rate, Add Links */}
         <div className="flex flex-wrap items-center gap-2">
           
+          {/* Pro HTML5 Player (Dual Audio & AI Subs) vs Drive Embed Toggle */}
+          <div className="flex items-center bg-[#0b1622] p-1 rounded-xl border border-[#1e293b]">
+            <button
+              type="button"
+              onClick={() => { setPlayerEngine('custom'); setPlayerViewMode('video'); }}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                playerEngine === 'custom' && playerViewMode === 'video'
+                  ? 'bg-sky-500 text-white shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+              title="Custom Pro Player with Dual Audio, Subtitles, and Translation"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Pro Player (Dual Audio & Subs)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => { setPlayerEngine('iframe'); setPlayerViewMode('video'); }}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                playerEngine === 'iframe' && playerViewMode === 'video'
+                  ? 'bg-sky-500 text-white shadow'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+              title="Google Drive Embedded Player"
+            >
+              <Film className="w-3.5 h-3.5" />
+              <span>Drive Embed</span>
+            </button>
+          </div>
+
           {/* Switch to Folder View if folder is set */}
           {googleDriveFolderUrl && (
             <button
@@ -219,7 +252,7 @@ export default function AnimeVideoPlayer({
               }`}
             >
               <Folder className="w-3.5 h-3.5" />
-              <span>{playerViewMode === 'folder' ? 'Watch Episode Video' : 'Browse Drive Folder'}</span>
+              <span>{playerViewMode === 'folder' ? 'Watch Episode Video' : 'Drive Folder'}</span>
             </button>
           )}
 
@@ -488,12 +521,18 @@ export default function AnimeVideoPlayer({
           </div>
         ) : parsedVideo ? (
           /* Single Episode Video Screen */
-          parsedVideo.type === 'video' ? (
-            <video
-              src={parsedVideo.embedUrl}
-              controls
-              autoPlay={false}
-              className="w-full h-full object-contain"
+          playerEngine === 'custom' ? (
+            <CustomVideoPlayer
+              src={
+                parsedVideo.type === 'video'
+                  ? parsedVideo.embedUrl
+                  : (parsedVideo.fileId ? `https://drive.google.com/uc?export=download&id=${parsedVideo.fileId}` : parsedVideo.originalUrl)
+              }
+              poster={media?.bannerImage || media?.coverImage?.extraLarge || media?.coverImage?.large}
+              title={currentTitle}
+              animeTitle={media?.title?.english || media?.title?.romaji || 'Anime'}
+              episodeNum={currentEpisode}
+              onEnded={handleNextEpisode}
             />
           ) : (
             <div className="relative w-full h-full">
