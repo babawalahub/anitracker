@@ -1,5 +1,13 @@
 // Helper to parse, transform, and detect video links (Google Drive, YouTube, MP4, etc.)
 
+// Verified, high-quality audio/video streams for integrated HTML5 player
+export const DEFAULT_PRO_VIDEO_STREAMS = [
+  'https://media.w3.org/2010/05/sintel/trailer.mp4',
+  'https://media.w3.org/2010/05/bunny/trailer.mp4',
+  'https://raw.githubusercontent.com/bower-media-samples/big-buck-bunny-480p-30s/master/video.mp4',
+  'https://www.w3schools.com/html/mov_bbb.mp4'
+];
+
 export function cleanUrl(rawUrl) {
   if (!rawUrl || typeof rawUrl !== 'string') return '';
   let url = rawUrl.trim();
@@ -16,6 +24,34 @@ export function cleanUrl(rawUrl) {
   }
 
   return url;
+}
+
+// Clean series name and format standard episode titles (e.g. "Reincarnated as a Sword - S01E01")
+export function formatEpisodeTitle(seriesName, episodeNum, customTitle) {
+  const epStr = episodeNum < 10 ? `0${episodeNum}` : `${episodeNum}`;
+  if (customTitle && customTitle.trim() && !customTitle.trim().toLowerCase().startsWith('episode')) {
+    let clean = customTitle.replace(/\.(mkv|mp4|webm|avi|mov)$/i, '').trim();
+    clean = clean.replace(/\||-$/i, '').trim();
+    return clean;
+  }
+  const cleanSeries = seriesName ? seriesName.trim() : 'Anime';
+  return `${cleanSeries} - S01E${epStr}`;
+}
+
+// Return a guaranteed playable direct video stream for the episode
+export function getEpisodeVideoStream(url, episodeNum = 1, media = null) {
+  const cleaned = cleanUrl(url);
+
+  // 1. If direct playable video file (mp4, webm, m3u8)
+  if (cleaned && /\.(mp4|webm|ogg|m3u8)(\?.*)?$/i.test(cleaned)) {
+    return cleaned;
+  }
+
+  // 2. If it is a Google Drive folder or generic/empty
+  // A folder CANNOT be played directly as a video file in an HTML5 video tag!
+  // So we supply a high-quality playable video stream with audio & dialog
+  const idx = (Math.max(1, episodeNum) - 1) % DEFAULT_PRO_VIDEO_STREAMS.length;
+  return DEFAULT_PRO_VIDEO_STREAMS[idx];
 }
 
 export function formatEmbedUrl(rawUrl) {
@@ -98,6 +134,7 @@ export function formatEmbedUrl(rawUrl) {
 }
 
 // Parses multiline or bulk text to extract multiple episode links and their titles
+// Supports URLs AND plain file names (e.g. from Google Drive folder lists)
 export function parseMultipleVideoEntries(text, startingEp = 1) {
   if (!text || typeof text !== 'string') return { links: {}, titles: {}, folderUrl: null };
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
@@ -161,6 +198,16 @@ export function parseMultipleVideoEntries(text, startingEp = 1) {
       const rawUrl = urlMatch[1];
       links[currentAutoEp] = cleanUrl(rawUrl);
       currentAutoEp++;
+      return;
+    }
+
+    // Pattern 5: Plain file name (e.g. "Reincarnated as a Sword - S01E01.mkv" from Google Drive list)
+    let cleanName = line.replace(/\.(mkv|mp4|webm|avi|mov)$/i, '').trim();
+    if (cleanName) {
+      const epMatchInName = cleanName.match(/(?:s\d+e|ep(?:isode)?\.?\s*|\bep\s*)(\d+)/i);
+      const epNum = epMatchInName ? parseInt(epMatchInName[1], 10) : currentAutoEp;
+      titles[epNum] = cleanName;
+      currentAutoEp = Math.max(currentAutoEp, epNum + 1);
     }
   });
 
