@@ -58,9 +58,20 @@ export default function CustomVideoPlayer({
   const [subFontSize, setSubFontSize] = useState('medium'); // 'small' | 'medium' | 'large'
   const [subColor, setSubColor] = useState('yellow'); // 'yellow' | 'white' | 'cyan'
 
+  // Detect Google Drive file or stream
+  const fileIdMatch = src ? (
+    src.match(/\/file\/(?:u\/\d+\/)?d\/([a-zA-Z0-9_-]+)/) || 
+    src.match(/[?&]id=([a-zA-Z0-9_-]+)/) ||
+    src.match(/\/d\/([a-zA-Z0-9_-]+)/)
+  ) : null;
+  const isGoogleDrive = Boolean(fileIdMatch || (src && src.includes('drive.google.com')));
+  const googleDriveEmbedUrl = fileIdMatch 
+    ? `https://drive.google.com/file/d/${fileIdMatch[1]}/preview` 
+    : (src && src.includes('drive.google.com') ? src : null);
+
   // Initialize Web Audio API for Dual Audio separation & Dialogue Boost
   const setupWebAudio = () => {
-    if (!videoRef.current || audioContextRef.current) return;
+    if (!videoRef.current || audioContextRef.current || isGoogleDrive) return;
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       const ctx = new AudioCtx();
@@ -83,6 +94,27 @@ export default function CustomVideoPlayer({
       console.warn("Web Audio API not supported on this stream:", err);
     }
   };
+
+  // For Google Drive video stream, advance subtitle timer when playing
+  useEffect(() => {
+    let interval = null;
+    if (isGoogleDrive && isPlaying) {
+      interval = setInterval(() => {
+        setCurrentTime((prev) => {
+          const next = prev + 1;
+          const effectiveTime = next - subDelay;
+          if (subtitlesEnabled && currentCues.length > 0) {
+            const cue = currentCues.find(c => effectiveTime >= c.start && effectiveTime <= c.end);
+            setActiveCueText(cue ? cue.text : '');
+          }
+          return next;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isGoogleDrive, isPlaying, subDelay, subtitlesEnabled, currentCues]);
 
   // Switch Dual Audio Channels (Stereo vs Left [Japanese] vs Right [English Dub])
   const setAudioChannel = (mode) => {
@@ -347,18 +379,28 @@ export default function CustomVideoPlayer({
       className="relative aspect-video w-full bg-black overflow-hidden select-none group flex items-center justify-center"
     >
       
-      {/* ── Native HTML5 Video Element ── */}
-      <video
-        ref={videoRef}
-        src={src}
-        poster={poster}
-        playsInline
-        onTimeUpdate={handleVideoTimeUpdate}
-        onLoadedMetadata={() => setDuration(videoRef.current?.duration || 0)}
-        onEnded={onEnded}
-        onClick={togglePlay}
-        className="w-full h-full object-contain cursor-pointer"
-      />
+      {/* ── Video Stream: Google Drive Embed or HTML5 Video ── */}
+      {isGoogleDrive ? (
+        <iframe
+          src={googleDriveEmbedUrl}
+          title={title}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowFullScreen
+          className="w-full h-full border-0"
+        />
+      ) : (
+        <video
+          ref={videoRef}
+          src={src}
+          poster={poster}
+          playsInline
+          onTimeUpdate={handleVideoTimeUpdate}
+          onLoadedMetadata={() => setDuration(videoRef.current?.duration || 0)}
+          onEnded={onEnded}
+          onClick={togglePlay}
+          className="w-full h-full object-contain cursor-pointer"
+        />
+      )}
 
       {/* ── Real-Time Dynamic Subtitle Overlay ── */}
       {subtitlesEnabled && activeCueText && (

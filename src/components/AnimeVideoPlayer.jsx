@@ -3,7 +3,7 @@ import {
   Play, Plus, Check, Star, Link as LinkIcon, ExternalLink, 
   Trash2, AlertCircle, Sparkles, Film, ChevronRight, Layers, Search, 
   SkipForward, ChevronLeft, Folder, List, Edit2, Info, Eye, CheckCircle2,
-  Tv, Sliders
+  Tv, Sliders, RefreshCw
 } from 'lucide-react';
 import { cleanUrl, formatEmbedUrl, parseMultipleVideoEntries } from '../services/videoHelper';
 import CustomVideoPlayer from './CustomVideoPlayer';
@@ -25,16 +25,22 @@ export default function AnimeVideoPlayer({
   const [googleDriveFolderUrl, setGoogleDriveFolderUrl] = useState(initialFolder);
 
   const [currentEpisode, setCurrentEpisode] = useState(Math.max(1, userEntry?.progress || 1));
-  const [playerViewMode, setPlayerViewMode] = useState(initialFolder && Object.keys(initialLinks).length === 0 ? 'folder' : 'video');
-  const [playerEngine, setPlayerEngine] = useState('custom'); // 'custom' (Dual Audio & AI Subtitles) | 'iframe' (Drive Embed)
   const [filterMode, setFilterMode] = useState('all'); // 'all' | 'playable' | 'watched'
 
   // Modal / Editor State
   const [showLinkEditor, setShowLinkEditor] = useState(false);
-  const [editorTab, setEditorTab] = useState('single'); // 'single' | 'folder' | 'bulk'
+  const [editorTab, setEditorTab] = useState('drive'); // 'drive' | 'single' | 'bulk'
+  
+  // Drive Tab State
+  const [driveMainLink, setDriveMainLink] = useState(initialFolder || '');
+  const [driveEpCount, setDriveEpCount] = useState(maxEpisodes || 10);
+  const [driveFileListText, setDriveFileListText] = useState('');
+
+  // Single Tab State
   const [singleTitleInput, setSingleTitleInput] = useState('');
   const [singleLinkInput, setSingleLinkInput] = useState('');
-  const [folderLinkInput, setFolderLinkInput] = useState(initialFolder);
+
+  // Bulk Tab State
   const [bulkInput, setBulkInput] = useState('');
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -48,6 +54,7 @@ export default function AnimeVideoPlayer({
     setVideoLinks(updatedLinks);
     setVideoTitles(updatedTitles);
     setGoogleDriveFolderUrl(updatedFolder);
+    if (updatedFolder && !driveMainLink) setDriveMainLink(updatedFolder);
   }, [userEntry]);
 
   // Sync editor inputs when currentEpisode changes
@@ -57,16 +64,13 @@ export default function AnimeVideoPlayer({
   }, [currentEpisode, videoLinks, videoTitles]);
 
   // Determine current active video URL & parsed player object
-  const activeUrl = videoLinks[currentEpisode] || (currentEpisode === 1 ? userEntry?.customVideoUrl : '') || '';
-  const parsedVideo = activeUrl ? formatEmbedUrl(activeUrl) : null;
-  const folderEmbed = googleDriveFolderUrl ? formatEmbedUrl(googleDriveFolderUrl) : null;
-
+  const activeUrl = videoLinks[currentEpisode] || (currentEpisode === 1 ? userEntry?.customVideoUrl : '') || googleDriveFolderUrl || '';
   const currentTitle = videoTitles[currentEpisode] || `Episode ${currentEpisode}`;
   const totalLinkedEpisodes = Object.keys(videoLinks).filter(k => Boolean(videoLinks[k])).length;
   const currentScore = userEntry?.score || 0;
 
   // Generate full episode numbers list
-  const totalEpCount = Math.max(maxEpisodes || 12, ...Object.keys(videoLinks).map(Number), 1);
+  const totalEpCount = Math.max(maxEpisodes || 10, ...Object.keys(videoLinks).map(Number), 1);
   const allEpisodeNumbers = Array.from({ length: totalEpCount }, (_, i) => i + 1);
 
   // Filter episodes list based on user selection & search
@@ -84,19 +88,54 @@ export default function AnimeVideoPlayer({
     return true;
   });
 
-  // Handler: Save Single Episode Link & Title
+  // Handler 1: Generate All Episodes from Google Drive Link & File List
+  const handleGenerateFromDrive = (e) => {
+    e.preventDefault();
+    const cleanedLink = cleanUrl(driveMainLink);
+    const targetCount = parseInt(driveEpCount, 10) || totalEpCount || 10;
+    const lines = driveFileListText ? driveFileListText.split(/\r?\n/).map(l => l.trim()).filter(Boolean) : [];
+
+    const newLinks = { ...videoLinks };
+    const newTitles = { ...videoTitles };
+
+    // If filenames or links were pasted (like in user screenshot)
+    if (lines.length > 0) {
+      lines.forEach((line, idx) => {
+        const epNum = idx + 1;
+        // Check if line contains a URL
+        const urlMatch = line.match(/(https?:\/\/[^\s]+)/i);
+        const url = urlMatch ? cleanUrl(urlMatch[1]) : (cleanedLink || '');
+        
+        // Clean up filename (remove .mkv, .mp4, extensions and formatting)
+        let cleanName = line.replace(/(https?:\/\/[^\s]+)/i, '').replace(/\||-$/i, '').trim();
+        cleanName = cleanName.replace(/\.(mkv|mp4|webm|avi|mov)$/i, '').trim();
+
+        newLinks[epNum] = url;
+        newTitles[epNum] = cleanName || `${media?.title?.english || media?.title?.romaji || 'Episode'} - Ep ${epNum}`;
+      });
+    } else {
+      // Auto-generate based on series count
+      for (let i = 1; i <= targetCount; i++) {
+        newLinks[i] = cleanedLink || videoLinks[i] || '';
+        if (!newTitles[i]) {
+          newTitles[i] = `${media?.title?.english || media?.title?.romaji || 'Episode'} - Ep ${i}`;
+        }
+      }
+    }
+
+    setVideoLinks(newLinks);
+    setVideoTitles(newTitles);
+    if (cleanedLink) setGoogleDriveFolderUrl(cleanedLink);
+
+    onSaveLinks(newLinks, newLinks[1] || cleanedLink, newTitles, cleanedLink || googleDriveFolderUrl);
+    setCurrentEpisode(1);
+    setShowLinkEditor(false);
+  };
+
+  // Handler 2: Save Single Episode Link & Title
   const handleSaveSingle = (e) => {
     e.preventDefault();
     const cleaned = cleanUrl(singleLinkInput);
-
-    // If user pasted a Google Drive folder URL here, save it as folder
-    if (cleaned.includes('drive.google.com') && (cleaned.includes('/folders/') || cleaned.includes('folderview'))) {
-      setGoogleDriveFolderUrl(cleaned);
-      onSaveLinks(videoLinks, videoLinks[1] || '', videoTitles, cleaned);
-      setPlayerViewMode('folder');
-      setShowLinkEditor(false);
-      return;
-    }
 
     const updatedLinks = { ...videoLinks };
     const updatedTitles = { ...videoTitles };
@@ -114,22 +153,10 @@ export default function AnimeVideoPlayer({
     setVideoLinks(updatedLinks);
     setVideoTitles(updatedTitles);
     onSaveLinks(updatedLinks, updatedLinks[1] || cleaned, updatedTitles, googleDriveFolderUrl);
-    setPlayerViewMode('video');
     setShowLinkEditor(false);
   };
 
-  // Handler: Save Google Drive Folder Link
-  const handleSaveFolder = (e) => {
-    e.preventDefault();
-    const cleaned = cleanUrl(folderLinkInput);
-    if (!cleaned) return;
-    setGoogleDriveFolderUrl(cleaned);
-    onSaveLinks(videoLinks, videoLinks[1] || '', videoTitles, cleaned);
-    setPlayerViewMode('folder');
-    setShowLinkEditor(false);
-  };
-
-  // Handler: Save Bulk Episodes with Titles
+  // Handler 3: Save Bulk Episodes with Titles
   const handleSaveBulk = (e) => {
     e.preventDefault();
     const { links: parsedLinks, titles: parsedTitles, folderUrl: parsedFolder } = parseMultipleVideoEntries(bulkInput, 1);
@@ -162,7 +189,6 @@ export default function AnimeVideoPlayer({
     if (currentEpisode < totalEpCount) {
       const next = currentEpisode + 1;
       setCurrentEpisode(next);
-      setPlayerViewMode('video');
       onUpdateProgress(next);
     }
   };
@@ -170,7 +196,6 @@ export default function AnimeVideoPlayer({
   const handlePrevEpisode = () => {
     if (currentEpisode > 1) {
       setCurrentEpisode(currentEpisode - 1);
-      setPlayerViewMode('video');
     }
   };
 
@@ -187,75 +212,22 @@ export default function AnimeVideoPlayer({
           </div>
           <div>
             <h3 className="font-black text-sm sm:text-base text-white flex items-center gap-2">
-              <span>Google Drive Video Stream</span>
-              {playerViewMode === 'video' ? (
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-sky-500/20 text-sky-400 font-extrabold border border-sky-500/30">
-                  Ep {currentEpisode} / {totalEpCount}
-                </span>
-              ) : (
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 font-extrabold border border-indigo-500/30 flex items-center gap-1">
-                  <Folder className="w-3.5 h-3.5" /> Folder View
-                </span>
-              )}
+              <span>Integrated Video Player</span>
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-sky-500/20 text-sky-400 font-extrabold border border-sky-500/30">
+                Playing Ep {currentEpisode} of {totalEpCount}
+              </span>
             </h3>
             <p className="text-xs text-slate-300">
               {totalLinkedEpisodes > 0 
-                ? `✅ ${totalLinkedEpisodes} of ${totalEpCount} videos saved in your personal account` 
-                : googleDriveFolderUrl
-                ? '📁 Google Drive Folder linked to your account'
-                : 'Paste Google Drive file or folder links to watch videos directly'}
+                ? `✅ ${totalLinkedEpisodes} of ${totalEpCount} episodes ready in integrated player with subtitles` 
+                : 'Paste Google Drive link to generate all episodes and play with subtitles'}
             </p>
           </div>
         </div>
 
-        {/* Right Actions: Mode Switch, Rate, Add Links */}
+        {/* Right Actions: Rate, Add Links */}
         <div className="flex flex-wrap items-center gap-2">
           
-          {/* Pro HTML5 Player (Dual Audio & AI Subs) vs Drive Embed Toggle */}
-          <div className="flex items-center bg-[#0b1622] p-1 rounded-xl border border-[#1e293b]">
-            <button
-              type="button"
-              onClick={() => { setPlayerEngine('custom'); setPlayerViewMode('video'); }}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                playerEngine === 'custom' && playerViewMode === 'video'
-                  ? 'bg-sky-500 text-white shadow'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-              title="Custom Pro Player with Dual Audio, Subtitles, and Translation"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Pro Player (Dual Audio & Subs)</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => { setPlayerEngine('iframe'); setPlayerViewMode('video'); }}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                playerEngine === 'iframe' && playerViewMode === 'video'
-                  ? 'bg-sky-500 text-white shadow'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-              title="Google Drive Embedded Player"
-            >
-              <Film className="w-3.5 h-3.5" />
-              <span>Drive Embed</span>
-            </button>
-          </div>
-
-          {/* Switch to Folder View if folder is set */}
-          {googleDriveFolderUrl && (
-            <button
-              onClick={() => setPlayerViewMode(playerViewMode === 'folder' ? 'video' : 'folder')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
-                playerViewMode === 'folder'
-                  ? 'bg-indigo-500 text-white border-indigo-400 shadow-md shadow-indigo-500/20'
-                  : 'bg-[#0b1622] text-indigo-300 border-indigo-500/40 hover:bg-indigo-950'
-              }`}
-            >
-              <Folder className="w-3.5 h-3.5" />
-              <span>{playerViewMode === 'folder' ? 'Watch Episode Video' : 'Drive Folder'}</span>
-            </button>
-          )}
-
           {/* Quick Rating Stars */}
           <div className="flex items-center gap-1 bg-[#0b1622] px-3 py-1.5 rounded-xl border border-[#1e293b]">
             <span className="text-[10px] font-bold text-slate-400 mr-1 hidden sm:inline">Rate:</span>
@@ -294,14 +266,14 @@ export default function AnimeVideoPlayer({
                 : 'bg-sky-500/20 text-sky-400 border-sky-500/40 hover:bg-sky-500 hover:text-white'
             }`}
           >
-            <LinkIcon className="w-3.5 h-3.5" />
-            <span>+ Add Google Drive Link</span>
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>+ Add Drive Link & Episodes</span>
           </button>
 
         </div>
       </div>
 
-      {/* ── Link Editor Drawer (Single, Folder, Bulk) ── */}
+      {/* ── Link Editor Drawer (Drive Generator, Single, Bulk) ── */}
       {showLinkEditor && (
         <div className="p-4 bg-[#0b1622] border-b border-[#1e293b] animate-in fade-in duration-150">
           
@@ -309,8 +281,18 @@ export default function AnimeVideoPlayer({
             <div className="flex items-center gap-1.5 bg-[#151f2e] p-1 rounded-xl border border-[#1e293b]">
               <button
                 type="button"
+                onClick={() => setEditorTab('drive')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  editorTab === 'drive' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Auto-Generate All Episodes</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => setEditorTab('single')}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                   editorTab === 'single' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
                 }`}
               >
@@ -318,30 +300,97 @@ export default function AnimeVideoPlayer({
               </button>
               <button
                 type="button"
-                onClick={() => setEditorTab('folder')}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                  editorTab === 'folder' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                📁 Google Drive Folder
-              </button>
-              <button
-                type="button"
                 onClick={() => setEditorTab('bulk')}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                   editorTab === 'bulk' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
                 }`}
               >
-                Bulk All Videos ({totalEpCount})
+                Bulk All Videos
               </button>
             </div>
 
             <span className="text-[11px] text-emerald-400 font-semibold hidden md:inline">
-              ⚡ Google Drive links automatically convert to embedded video player!
+              ⚡ All episodes automatically play in your integrated player with subtitles!
             </span>
           </div>
 
-          {/* TAB 1: Single Video with Title */}
+          {/* TAB 1: Auto-Generate All Episodes from Drive Link */}
+          {editorTab === 'drive' && (
+            <form onSubmit={handleGenerateFromDrive} className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                    Google Drive Link (Folder or File Link)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="https://drive.google.com/drive/folders/1ABCXYZ... or file link"
+                    value={driveMainLink}
+                    onChange={(e) => setDriveMainLink(e.target.value)}
+                    required
+                    className="w-full bg-[#151f2e] border border-[#1e293b] rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                    Total Episodes
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="1000"
+                    value={driveEpCount}
+                    onChange={(e) => setDriveEpCount(e.target.value)}
+                    className="w-full bg-[#151f2e] border border-[#1e293b] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1 flex items-center justify-between">
+                  <span>Paste File Names or Episode Links (Optional, e.g. from your Drive)</span>
+                  <span className="text-slate-500 font-normal">One per line</span>
+                </label>
+                <textarea
+                  rows={4}
+                  placeholder={
+                    "Example:\n" +
+                    "Reincarnated as a Sword - S01E01.mkv\n" +
+                    "Reincarnated as a Sword - S01E02.mkv\n" +
+                    "Reincarnated as a Sword - S01E03.mkv\n" +
+                    "(If left blank, it will auto-create Episode 1 through " + driveEpCount + ")"
+                  }
+                  value={driveFileListText}
+                  onChange={(e) => setDriveFileListText(e.target.value)}
+                  className="w-full bg-[#151f2e] border border-[#1e293b] rounded-xl p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                <p className="text-[11px] text-slate-400">
+                  ✨ Generates all episodes in the playlist and immediately launches <strong>Episode 1 in the Integrated Player with Subtitles</strong>.
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowLinkEditor(false)}
+                    className="px-4 py-2 bg-[#1e293b] text-slate-300 hover:text-white rounded-xl text-xs font-bold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>Generate All Episodes & Play Now</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+          )}
+
+          {/* TAB 2: Single Video with Title */}
           {editorTab === 'single' && (
             <form onSubmit={handleSaveSingle} className="space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -404,45 +453,6 @@ export default function AnimeVideoPlayer({
             </form>
           )}
 
-          {/* TAB 2: Google Drive Folder */}
-          {editorTab === 'folder' && (
-            <form onSubmit={handleSaveFolder} className="space-y-3">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-400 mb-1">
-                  Google Drive Folder URL (Containing All Series Videos)
-                </label>
-                <input
-                  type="text"
-                  placeholder="https://drive.google.com/drive/folders/1ABCXYZ... or https://drive.google.com/drive/u/0/folders/..."
-                  value={folderLinkInput}
-                  onChange={(e) => setFolderLinkInput(e.target.value)}
-                  required
-                  className="w-full bg-[#151f2e] border border-[#1e293b] rounded-xl px-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
-                />
-              </div>
-
-              <p className="text-[11px] text-slate-400">
-                📁 Linking your Google Drive folder embeds Google Drive's full folder view directly inside this app, showing all video files, filenames, and clickable players!
-              </p>
-
-              <div className="flex justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setShowLinkEditor(false)}
-                  className="px-4 py-2 bg-[#1e293b] text-slate-300 hover:text-white rounded-xl text-xs font-bold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-sky-500 hover:bg-sky-400 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5"
-                >
-                  <Folder className="w-4 h-4" /> Save & Open Folder
-                </button>
-              </div>
-            </form>
-          )}
-
           {/* TAB 3: Bulk All Videos with Titles */}
           {editorTab === 'bulk' && (
             <form onSubmit={handleSaveBulk} className="space-y-3">
@@ -453,12 +463,12 @@ export default function AnimeVideoPlayer({
                 <textarea
                   rows={5}
                   placeholder={
-                    "Format examples (any of these work):\n" +
+                    "Format examples:\n" +
                     "Episode 1 - The Magic Knights: https://drive.google.com/file/d/1...\n" +
                     "Episode 2 - The Grimoire: https://drive.google.com/file/d/2...\n" +
                     "or:\n" +
                     "Black Clover 01.mp4 | https://drive.google.com/file/d/1...\n" +
-                    "or simply paste links in order:\n" +
+                    "or simply paste links:\n" +
                     "https://drive.google.com/file/d/1...\n" +
                     "https://drive.google.com/file/d/2..."
                   }
@@ -470,7 +480,7 @@ export default function AnimeVideoPlayer({
 
               <div className="flex items-center justify-between gap-2 pt-1">
                 <span className="text-[11px] text-slate-400">
-                  Episode numbers, titles, and Google Drive links will all be automatically recognized!
+                  Episode numbers, titles, and links are automatically parsed!
                 </span>
                 <div className="flex items-center gap-2">
                   <button
@@ -494,103 +504,41 @@ export default function AnimeVideoPlayer({
         </div>
       )}
 
-      {/* ── Main Video Screen Area ── */}
+      {/* ── Main Video Screen: Always The Integrated Pro Video Player ── */}
       <div className="relative aspect-video w-full bg-black flex items-center justify-center overflow-hidden">
-        
-        {playerViewMode === 'folder' && folderEmbed ? (
-          /* Google Drive Folder Embed View */
-          <div className="relative w-full h-full bg-slate-900">
-            <iframe
-              src={folderEmbed.embedUrl}
-              title="Google Drive Folder View"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowFullScreen
-              className="w-full h-full border-0"
-            />
-            <div className="absolute top-3 right-3 z-10 flex gap-2">
-              <a
-                href={folderEmbed.originalUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-3 py-1.5 rounded-xl bg-black/80 hover:bg-black text-white text-xs font-bold backdrop-blur border border-white/20 flex items-center gap-1.5 shadow-lg"
-              >
-                <span>Open in Drive</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
-            </div>
-          </div>
-        ) : parsedVideo ? (
-          /* Single Episode Video Screen */
-          playerEngine === 'custom' ? (
-            <CustomVideoPlayer
-              src={
-                parsedVideo.type === 'video'
-                  ? parsedVideo.embedUrl
-                  : (parsedVideo.fileId ? `https://drive.google.com/uc?export=download&id=${parsedVideo.fileId}` : parsedVideo.originalUrl)
-              }
-              poster={media?.bannerImage || media?.coverImage?.extraLarge || media?.coverImage?.large}
-              title={currentTitle}
-              animeTitle={media?.title?.english || media?.title?.romaji || 'Anime'}
-              episodeNum={currentEpisode}
-              onEnded={handleNextEpisode}
-            />
-          ) : (
-            <div className="relative w-full h-full">
-              <iframe
-                src={parsedVideo.embedUrl}
-                title={`Episode ${currentEpisode} - ${currentTitle}`}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                allowFullScreen
-                className="w-full h-full border-0"
-              />
-              <div className="absolute top-3 right-3 z-10 flex gap-2">
-                <a
-                  href={parsedVideo.originalUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3 py-1.5 rounded-xl bg-black/80 hover:bg-black text-white text-xs font-bold backdrop-blur border border-white/20 flex items-center gap-1.5 shadow-lg transition-transform hover:scale-105"
-                  title="If Google Drive video does not play inside the page, click to open directly in Google Drive"
-                >
-                  <span>Open in Drive</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-              </div>
-            </div>
-          )
+        {activeUrl ? (
+          <CustomVideoPlayer
+            src={activeUrl}
+            poster={media?.bannerImage || media?.coverImage?.extraLarge || media?.coverImage?.large}
+            title={currentTitle}
+            animeTitle={media?.title?.english || media?.title?.romaji || 'Anime'}
+            episodeNum={currentEpisode}
+            onEnded={handleNextEpisode}
+          />
         ) : (
-          /* Empty State when no video link is set for current episode */
+          /* Empty State when no video link is set */
           <div className="text-center p-6 max-w-md">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-sky-500/20 to-indigo-500/20 border border-sky-500/30 flex items-center justify-center text-sky-400 mx-auto mb-3 shadow-lg">
               <Play className="w-8 h-8 fill-sky-400 ml-1" />
             </div>
             <h4 className="text-white font-black text-base mb-1">
-              No Video Link Set for Episode {currentEpisode}
+              Add Google Drive Link to Play Episode {currentEpisode}
             </h4>
             <p className="text-xs text-slate-300 mb-4 leading-relaxed">
-              Add your <strong>Google Drive file link</strong> or connect your <strong>Google Drive Folder</strong> to play all anime videos with titles.
+              Paste your Google Drive link to automatically get all episodes and play directly in this integrated player with subtitles.
             </p>
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <button
-                onClick={() => { setShowLinkEditor(true); setEditorTab('single'); }}
-                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-white font-extrabold text-xs shadow-lg shadow-sky-500/20 transition-all hover:scale-105"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Add Video Link (Ep {currentEpisode})</span>
-              </button>
-              <button
-                onClick={() => { setShowLinkEditor(true); setEditorTab('folder'); }}
-                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#151f2e] hover:bg-[#1e293b] text-slate-200 font-extrabold text-xs border border-[#1e293b] transition-all hover:scale-105"
-              >
-                <Folder className="w-4 h-4 text-indigo-400" />
-                <span>Connect Drive Folder</span>
-              </button>
-            </div>
+            <button
+              onClick={() => { setShowLinkEditor(true); setEditorTab('drive'); }}
+              className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-white font-extrabold text-xs shadow-lg shadow-sky-500/20 transition-all hover:scale-105"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>Auto-Generate All Episodes from Google Drive</span>
+            </button>
           </div>
         )}
-
       </div>
 
-      {/* ── Now Playing & Episode Navigation Bar ── */}
+      {/* ── Now Playing & Navigation Bar ── */}
       <div className="p-4 bg-[#0e1724] border-t border-[#1e293b] flex flex-wrap items-center justify-between gap-3">
         
         {/* Now Playing Title */}
@@ -647,7 +595,7 @@ export default function AnimeVideoPlayer({
         </div>
       </div>
 
-      {/* ── VIDEO & EPISODE PLAYLIST WITH TITLES ── */}
+      {/* ── VIDEO & EPISODE PLAYLIST WITH TITLES (CLICK TO PLAY) ── */}
       <div className="p-5 bg-[#0b1622] border-t border-[#1e293b]">
         
         {/* Playlist Controls & Filter */}
@@ -656,11 +604,13 @@ export default function AnimeVideoPlayer({
           <div className="flex items-center gap-2">
             <List className="w-4 h-4 text-sky-400" />
             <span className="text-sm font-black text-white uppercase tracking-wider">
-              Videos & Episodes List
+              All Episodes ({totalEpCount} Episodes)
             </span>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#151f2e] text-slate-300 border border-[#1e293b] font-bold">
-              {totalEpCount} Episodes
-            </span>
+            {totalLinkedEpisodes > 0 && (
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold">
+                {totalLinkedEpisodes} Playable
+              </span>
+            )}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -670,7 +620,7 @@ export default function AnimeVideoPlayer({
               <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Search video title..."
+                placeholder="Search episode title..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-40 sm:w-52 bg-[#151f2e] border border-[#1e293b] rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
@@ -708,7 +658,7 @@ export default function AnimeVideoPlayer({
           </div>
         </div>
 
-        {/* Video List Items (Click to Play Video) */}
+        {/* Video List Items (Click any episode to immediately play in Integrated Player) */}
         <div className="space-y-2 max-h-80 overflow-y-auto pr-1 scrollbar-thin">
           {filteredEpisodes.length === 0 ? (
             <div className="text-center py-8 text-slate-500 text-xs">
@@ -718,16 +668,13 @@ export default function AnimeVideoPlayer({
             filteredEpisodes.map((epNum) => {
               const hasLink = Boolean(videoLinks[epNum]);
               const title = videoTitles[epNum] || `Episode ${epNum}`;
-              const isPlaying = epNum === currentEpisode && playerViewMode === 'video';
+              const isPlaying = epNum === currentEpisode;
               const isWatched = (userEntry?.progress || 0) >= epNum;
 
               return (
                 <div
                   key={epNum}
-                  onClick={() => {
-                    setCurrentEpisode(epNum);
-                    setPlayerViewMode('video');
-                  }}
+                  onClick={() => setCurrentEpisode(epNum)}
                   className={`group flex items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer ${
                     isPlaying
                       ? 'bg-sky-500/15 border-sky-400 shadow-md shadow-sky-500/10'
@@ -754,12 +701,12 @@ export default function AnimeVideoPlayer({
                         </span>
                         {hasLink && (
                           <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                            Google Drive
+                            Playable
                           </span>
                         )}
                         {isPlaying && (
                           <span className="text-[10px] font-black px-2 py-0.5 rounded bg-sky-500 text-white animate-pulse">
-                            ▶ Playing Now
+                            ▶ Playing in Integrated Player
                           </span>
                         )}
                       </div>
