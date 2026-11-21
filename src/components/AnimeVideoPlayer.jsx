@@ -119,17 +119,18 @@ export default function AnimeVideoPlayer({
         // Auto-fill textarea with the extracted episodes!
         const lines = result.episodes.map(ep => `${ep.title}: ${ep.link}`).join('\n');
         setDriveFileListText(lines);
-      } else if (result && result.isRestricted) {
+      } else if (result && (result.isRestricted || result.message)) {
         setFolderFetchResult({
           success: false,
           isRestricted: true,
           folderId: result.folderId,
-          message: result.message
+          message: result.message || "Google Drive folder is set to 'Restricted'."
         });
       } else {
         setFolderFetchResult({
           success: false,
-          message: 'Could not auto-read files. The folder may be restricted or empty.'
+          isRestricted: true,
+          message: 'Could not auto-read files. The folder is likely restricted or requires login.'
         });
       }
     } catch (err) {
@@ -533,7 +534,7 @@ export default function AnimeVideoPlayer({
                         {folderFetchResult.success ? (
                           <>
                             <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                            <span>Found ${folderFetchResult.count} Episodes in Google Drive Folder!</span>
+                            <span>Found {folderFetchResult.count} Episodes in Google Drive Folder!</span>
                           </>
                         ) : folderFetchResult.isRestricted ? (
                           <>
@@ -543,14 +544,14 @@ export default function AnimeVideoPlayer({
                         ) : (
                           <>
                             <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
-                            <span>${folderFetchResult.message}</span>
+                            <span>{folderFetchResult.message}</span>
                           </>
                         )}
                       </p>
                       {folderFetchResult.isRestricted && (
                         <p className="text-[11px] text-amber-300/90 leading-relaxed">
-                          To auto-detect all episode titles: In Google Drive, right-click the folder ➔ <strong>Share</strong> ➔ change from <em>Restricted</em> to <strong>"Anyone with the link can view"</strong>, then click <strong>Auto-Detect</strong> above.<br />
-                          <em>Or simply copy and paste the filenames/links into the box below.</em>
+                          To auto-detect all episode titles: In your Google Drive tab, right-click the folder ➔ <strong>Share</strong> ➔ change from <em>Restricted</em> to <strong>"Anyone with the link can view"</strong>, then click <strong>Auto-Detect</strong> above.<br />
+                          <em>Or simply copy the 12 file names/links from Drive and paste them in the box below!</em>
                         </p>
                       )}
                     </div>
