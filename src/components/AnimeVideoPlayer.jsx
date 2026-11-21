@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Play, Plus, Check, Star, Link as LinkIcon, ExternalLink, 
-  Trash2, AlertCircle, Sparkles, Film, ChevronRight, Layers, Search, 
+import {
+  Play, Plus, Check, Star, Link as LinkIcon, ExternalLink,
+  Trash2, AlertCircle, Sparkles, Film, ChevronRight, Layers, Search,
   SkipForward, ChevronLeft, Folder, List, Edit2, Info, Eye, CheckCircle2,
   Tv, Sliders, RefreshCw
 } from 'lucide-react';
-import { 
-  cleanUrl, 
-  formatEmbedUrl, 
-  parseMultipleVideoEntries, 
+import {
+  cleanUrl,
+  formatEmbedUrl,
+  parseMultipleVideoEntries,
   formatEpisodeTitle,
   fetchDriveTitle,
   fetchDriveFolderContents
@@ -37,7 +37,7 @@ export default function AnimeVideoPlayer({
   // Modal / Editor State
   const [showLinkEditor, setShowLinkEditor] = useState(false);
   const [editorTab, setEditorTab] = useState('drive'); // 'drive' | 'single' | 'bulk'
-  
+
   // Drive Tab State
   const [driveMainLink, setDriveMainLink] = useState(initialFolder || '');
   const [driveEpCount, setDriveEpCount] = useState(maxEpisodes || 12);
@@ -87,7 +87,7 @@ export default function AnimeVideoPlayer({
   // Filter episodes list based on user selection & search
   const filteredEpisodes = allEpisodeNumbers.filter((ep) => {
     const title = (videoTitles[ep] || formatEpisodeTitle(seriesName, ep)).toLowerCase();
-    const hasLink = Boolean(videoLinks[ep]) || Boolean(googleDriveFolderUrl);
+    const hasLink = Boolean(videoLinks[ep]);
     const isWatched = (userEntry?.progress || 0) >= ep;
     const q = searchQuery.toLowerCase().trim();
 
@@ -171,7 +171,7 @@ export default function AnimeVideoPlayer({
     // Check if filenames or links were pasted in the textarea
     if (driveFileListText.trim()) {
       const parsed = parseMultipleVideoEntries(driveFileListText, 1);
-      
+
       // Copy extracted titles and links
       Object.entries(parsed.titles).forEach(([ep, t]) => {
         const epNum = parseInt(ep, 10);
@@ -262,7 +262,7 @@ export default function AnimeVideoPlayer({
   const handleSaveBulk = async (e) => {
     e.preventDefault();
     const { links: parsedLinks, titles: parsedTitles, folderUrl: parsedFolder } = parseMultipleVideoEntries(bulkInput, 1);
-    
+
     const updatedLinks = { ...videoLinks };
     const updatedTitles = { ...videoTitles };
 
@@ -343,10 +343,10 @@ export default function AnimeVideoPlayer({
 
   return (
     <div className="bg-[#151f2e] border-2 border-sky-500/40 rounded-3xl overflow-hidden shadow-2xl mb-6">
-      
+
       {/* ── Top Header Navigation Bar ── */}
       <div className="px-5 py-4 border-b border-[#1e293b] flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-sky-950 via-[#0e1724] to-[#151f2e]">
-        
+
         {/* Left: Player Title & Status */}
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-sky-500 to-indigo-600 text-white flex items-center justify-center font-bold shadow-lg shadow-sky-500/30">
@@ -360,8 +360,8 @@ export default function AnimeVideoPlayer({
               </span>
             </h3>
             <p className="text-xs text-slate-300">
-              {googleDriveFolderUrl 
-                ? `📁 Drive connected (${totalEpCount} Episodes) • Playing in Pro Player with Subtitles & Dual Audio` 
+              {googleDriveFolderUrl
+                ? `📁 Drive connected (${totalEpCount} Episodes) • Playing in Pro Player with Subtitles & Dual Audio`
                 : 'Click Play to watch with Subtitles & Dual Audio, or add your Google Drive link'}
             </p>
           </div>
@@ -369,7 +369,7 @@ export default function AnimeVideoPlayer({
 
         {/* Right Actions: Rate, Add Links */}
         <div className="flex flex-wrap items-center gap-2">
-          
+
           {/* Quick Rating Stars */}
           <div className="flex items-center gap-1 bg-[#0b1622] px-3 py-1.5 rounded-xl border border-[#1e293b]">
             <span className="text-[10px] font-bold text-slate-400 mr-1 hidden sm:inline">Rate:</span>
@@ -384,12 +384,11 @@ export default function AnimeVideoPlayer({
                   className="p-0.5 transition-transform hover:scale-125 focus:outline-none"
                   title={`Rate ${star} / 10 ★`}
                 >
-                  <Star 
-                    className={`w-3.5 h-3.5 ${
-                      (hoverScore || currentScore) >= star 
-                        ? 'fill-amber-400 text-amber-400' 
+                  <Star
+                    className={`w-3.5 h-3.5 ${(hoverScore || currentScore) >= star
+                        ? 'fill-amber-400 text-amber-400'
                         : 'text-slate-600'
-                    }`} 
+                      }`}
                   />
                 </button>
               ))}
@@ -402,11 +401,10 @@ export default function AnimeVideoPlayer({
           {/* + Add / Edit Links Button */}
           <button
             onClick={() => setShowLinkEditor(!showLinkEditor)}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all border shadow-md ${
-              showLinkEditor 
-                ? 'bg-sky-500 text-white border-sky-400 shadow-sky-500/20' 
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-extrabold transition-all border shadow-md ${showLinkEditor
+                ? 'bg-sky-500 text-white border-sky-400 shadow-sky-500/20'
                 : 'bg-sky-500/20 text-sky-400 border-sky-500/40 hover:bg-sky-500 hover:text-white'
-            }`}
+              }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
             <span>+ Add Drive Link & Episodes</span>
@@ -418,15 +416,14 @@ export default function AnimeVideoPlayer({
       {/* ── Link Editor Drawer (Drive Generator, Single, Bulk) ── */}
       {showLinkEditor && (
         <div className="p-4 bg-[#0b1622] border-b border-[#1e293b] animate-in fade-in duration-150">
-          
+
           <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
             <div className="flex items-center gap-1.5 bg-[#151f2e] p-1 rounded-xl border border-[#1e293b]">
               <button
                 type="button"
                 onClick={() => setEditorTab('drive')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                  editorTab === 'drive' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
-                }`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${editorTab === 'drive' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
+                  }`}
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>Auto-Generate All Episodes</span>
@@ -434,18 +431,16 @@ export default function AnimeVideoPlayer({
               <button
                 type="button"
                 onClick={() => setEditorTab('single')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  editorTab === 'single' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
-                }`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${editorTab === 'single' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
+                  }`}
               >
                 Single Video (Ep {currentEpisode})
               </button>
               <button
                 type="button"
                 onClick={() => setEditorTab('bulk')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  editorTab === 'bulk' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
-                }`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${editorTab === 'bulk' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
+                  }`}
               >
                 Bulk All Videos
               </button>
@@ -521,13 +516,12 @@ export default function AnimeVideoPlayer({
 
               {/* Folder Detection Result Banner */}
               {folderFetchResult && (
-                <div className={`p-3 rounded-2xl border text-xs transition-all ${
-                  folderFetchResult.success 
-                    ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200' 
+                <div className={`p-3 rounded-2xl border text-xs transition-all ${folderFetchResult.success
+                    ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200'
                     : folderFetchResult.isRestricted
                       ? 'bg-amber-950/40 border-amber-500/40 text-amber-200'
                       : 'bg-rose-950/40 border-rose-500/40 text-rose-200'
-                }`}>
+                  }`}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="space-y-1">
                       <p className="font-extrabold flex items-center gap-1.5">
@@ -777,11 +771,10 @@ export default function AnimeVideoPlayer({
             <button
               key={ep}
               onClick={() => setCurrentEpisode(ep)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-black whitespace-nowrap transition-all border flex items-center gap-1.5 ${
-                ep === currentEpisode
+              className={`px-3 py-1.5 rounded-xl text-xs font-black whitespace-nowrap transition-all border flex items-center gap-1.5 ${ep === currentEpisode
                   ? 'bg-sky-500 text-white border-sky-400 shadow-md shadow-sky-500/30 scale-105'
                   : 'bg-[#151f2e] text-slate-300 border-[#1e293b] hover:border-sky-500/50 hover:text-white'
-              }`}
+                }`}
               title={epTitle}
             >
               <span className={`w-2 h-2 rounded-full flex-shrink-0 ${hasLink ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]' : 'bg-slate-600'}`} />
@@ -822,7 +815,7 @@ export default function AnimeVideoPlayer({
 
       {/* ── Now Playing & Navigation Bar ── */}
       <div className="p-4 bg-[#0e1724] border-t border-[#1e293b] flex flex-wrap items-center justify-between gap-3">
-        
+
         {/* Now Playing Title */}
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
@@ -838,7 +831,7 @@ export default function AnimeVideoPlayer({
 
         {/* Player Controls */}
         <div className="flex flex-wrap items-center gap-2">
-          
+
           {/* Previous Episode */}
           <button
             onClick={handlePrevEpisode}
@@ -864,11 +857,10 @@ export default function AnimeVideoPlayer({
           {/* Mark as Watched */}
           <button
             onClick={() => onUpdateProgress(currentEpisode)}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-              (userEntry?.progress || 0) >= currentEpisode
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${(userEntry?.progress || 0) >= currentEpisode
                 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                 : 'bg-[#151f2e] text-slate-300 border border-[#1e293b] hover:border-emerald-500 hover:text-emerald-400'
-            }`}
+              }`}
           >
             <Check className="w-3.5 h-3.5" />
             <span>{(userEntry?.progress || 0) >= currentEpisode ? `Watched (Ep ${currentEpisode})` : `Mark Ep ${currentEpisode} Watched`}</span>
@@ -879,22 +871,26 @@ export default function AnimeVideoPlayer({
 
       {/* ── VIDEO & EPISODE PLAYLIST WITH TITLES (CLICK TO PLAY) ── */}
       <div className="p-5 bg-[#0b1622] border-t border-[#1e293b]">
-        
+
         {/* Playlist Controls & Filter */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-          
+
           <div className="flex items-center gap-2">
             <List className="w-4 h-4 text-sky-400" />
             <span className="text-sm font-black text-white uppercase tracking-wider">
               All Episodes ({totalEpCount} Episodes)
             </span>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold">
-              {totalEpCount} Playable in Pro Player
+            <span className={`text-xs px-2.5 py-0.5 rounded-full border font-bold ${
+              totalLinkedEpisodes > 0 
+                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' 
+                : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+            }`}>
+              {totalLinkedEpisodes > 0 ? `${totalLinkedEpisodes} of ${totalEpCount} Episodes Linked` : '0 Episodes Linked (Add Link to Play)'}
             </span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            
+
             {/* Search Input for Video Titles */}
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -911,25 +907,22 @@ export default function AnimeVideoPlayer({
             <div className="flex items-center bg-[#151f2e] p-1 rounded-xl border border-[#1e293b] text-xs">
               <button
                 onClick={() => setFilterMode('all')}
-                className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
-                  filterMode === 'all' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
-                }`}
+                className={`px-2.5 py-1 rounded-lg font-bold transition-all ${filterMode === 'all' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
+                  }`}
               >
                 All
               </button>
               <button
                 onClick={() => setFilterMode('playable')}
-                className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
-                  filterMode === 'playable' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
-                }`}
+                className={`px-2.5 py-1 rounded-lg font-bold transition-all ${filterMode === 'playable' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
+                  }`}
               >
                 Playable
               </button>
               <button
                 onClick={() => setFilterMode('watched')}
-                className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
-                  filterMode === 'watched' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
-                }`}
+                className={`px-2.5 py-1 rounded-lg font-bold transition-all ${filterMode === 'watched' ? 'bg-sky-500 text-white shadow' : 'text-slate-400 hover:text-white'
+                  }`}
               >
                 Watched
               </button>
@@ -955,22 +948,20 @@ export default function AnimeVideoPlayer({
                 <div
                   key={epNum}
                   onClick={() => setCurrentEpisode(epNum)}
-                  className={`group flex items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer ${
-                    isPlaying
+                  className={`group flex items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer ${isPlaying
                       ? 'bg-sky-500/15 border-sky-400 shadow-md shadow-sky-500/10'
                       : hasLink
-                      ? 'bg-[#111c2e] border-[#1e293b] hover:border-sky-500/50 hover:bg-[#15233a]'
-                      : 'bg-[#0e1724] border-[#1e293b]/60 hover:border-[#1e293b] opacity-80'
-                  }`}
+                        ? 'bg-[#111c2e] border-[#1e293b] hover:border-sky-500/50 hover:bg-[#15233a]'
+                        : 'bg-[#0e1724] border-[#1e293b]/60 hover:border-[#1e293b] opacity-80'
+                    }`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all ${
-                      isPlaying
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all ${isPlaying
                         ? 'bg-sky-500 text-white shadow-lg shadow-sky-500/30 scale-105'
                         : hasLink
-                        ? 'bg-[#151f2e] text-sky-400 group-hover:bg-sky-500 group-hover:text-white'
-                        : 'bg-[#080f18] text-slate-500'
-                    }`}>
+                          ? 'bg-[#151f2e] text-sky-400 group-hover:bg-sky-500 group-hover:text-white'
+                          : 'bg-[#080f18] text-slate-500'
+                      }`}>
                       <Play className={`w-4 h-4 ${isPlaying ? 'fill-white' : ''} ml-0.5`} />
                     </div>
 
@@ -979,9 +970,15 @@ export default function AnimeVideoPlayer({
                         <span className={`text-xs font-black ${isPlaying ? 'text-sky-300' : 'text-white'}`}>
                           Episode {epNum}
                         </span>
-                        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                          Playable
-                        </span>
+                        {Boolean(videoLinks[epNum]) ? (
+                          <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                            Playable
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-700/60 text-slate-400 border border-slate-600/30">
+                            Needs Link
+                          </span>
+                        )}
                         {isPlaying && (
                           <span className="text-[10px] font-black px-2 py-0.5 rounded bg-sky-500 text-white animate-pulse">
                             ▶ Playing Now
