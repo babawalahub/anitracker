@@ -181,23 +181,13 @@ export default function CustomVideoPlayer({
     }
   };
 
-  // Auto-fetch Internet Subtitles on Mount or Episode Change
+  // Reset custom subtitle tracks when changing episodes
   useEffect(() => {
-    let isMounted = true;
-    async function loadSubs() {
-      try {
-        const cues = await autoFetchInternetSubtitles(animeTitle || title, episodeNum || 1);
-        if (isMounted && cues && cues.length > 0) {
-          setOriginalCues(cues);
-          setCurrentCues(cues);
-        }
-      } catch (err) {
-        console.warn("Could not auto-fetch subtitles:", err);
-      }
-    }
-    loadSubs();
-    return () => { isMounted = false; };
-  }, [animeTitle, title, episodeNum]);
+    setOriginalCues([]);
+    setCurrentCues([]);
+    setActiveCueText('');
+    setSelectedLang('original');
+  }, [episodeNum]);
 
   // Translate Subtitles in real time when selectedLang changes
   const handleLanguageChange = async (targetLang) => {

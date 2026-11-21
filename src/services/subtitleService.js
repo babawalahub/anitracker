@@ -148,48 +148,9 @@ export async function translateCues(cues, targetLang = 'en', onProgress) {
   return translatedCues;
 }
 
-// Auto-generate or fetch subtitles from internet for an anime episode
+// Subtitles: Supports custom .SRT / .VTT uploads and real-time multi-language AI translation
 export async function autoFetchInternetSubtitles(animeTitle, episodeNum = 1) {
-  const cleanTitle = (animeTitle || 'Anime').trim();
-  
-  // Generate realistic timed dialogue cues tailored for this anime episode
-  // Provides immediate, synchronized dialogue cues for the episode
-  const defaultCues = [
-    { id: 1, start: 2.0, end: 5.5, text: `${cleanTitle} - Episode ${episodeNum}` },
-    { id: 2, start: 6.0, end: 9.8, text: "In a world where magic and destiny intertwine..." },
-    { id: 3, start: 10.5, end: 14.2, text: "I will never give up! Giving up is not an option!" },
-    { id: 4, start: 15.0, end: 19.5, text: "Look closely at this power. Our journey is just beginning." },
-    { id: 5, start: 20.0, end: 24.5, text: "Even without magical power, I will become the greatest!" },
-    { id: 6, start: 25.0, end: 29.8, text: "Let's show them what true strength really looks like!" },
-    { id: 7, start: 31.0, end: 36.2, text: "Hold on tight! An enemy approaches from the shadows!" },
-    { id: 8, start: 38.0, end: 42.5, text: "Together, nothing in this world can stop our vow!" },
-    { id: 9, start: 45.0, end: 50.0, text: "This is the power of our bond! Magic Knight attack!" },
-    { id: 10, start: 52.0, end: 57.5, text: "Next time on our adventure: A new destiny unfolds!" }
-  ];
-
-  try {
-    // Attempt to query open subtitle search endpoints if available
-    const searchUrl = `https://api.consumet.org/anime/subtitles/${encodeURIComponent(cleanTitle)}?ep=${episodeNum}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
-    
-    const res = await fetch(searchUrl, { signal: controller.signal }).catch(() => null);
-    clearTimeout(timeout);
-
-    if (res && res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data) && data[0]?.url) {
-        const subRes = await fetch(data[0].url);
-        if (subRes.ok) {
-          const subText = await subRes.text();
-          const parsed = parseSrtOrVtt(subText);
-          if (parsed.length > 0) return parsed;
-        }
-      }
-    }
-  } catch (err) {
-    console.warn("Online subtitle fetch fallback triggered:", err);
-  }
-
-  return defaultCues;
+  // Returns empty array by default to avoid CORS errors from dead external APIs
+  // and prevent fake subtitles from displaying over videos
+  return [];
 }
