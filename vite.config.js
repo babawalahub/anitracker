@@ -85,15 +85,15 @@ function driveMetadataPlugin() {
           const { data, statusCode } = await fetchWithRedirects(targetUrl);
 
           const ogMatch = data.match(/<meta\s+property=["']og:title["']\s+content=["']([^"']+)["']/i) ||
-                          data.match(/<meta\s+content=["']([^"']+)["']\s+property=["']og:title["']/i);
+            data.match(/<meta\s+content=["']([^"']+)["']\s+property=["']og:title["']/i);
           const twitterMatch = data.match(/<meta\s+name=["']twitter:title["']\s+content=["']([^"']+)["']/i);
           const itemPropMatch = data.match(/<meta\s+itemprop=["']name["']\s+content=["']([^"']+)["']/i);
           const titleMatch = data.match(/<title>([^<]+)<\/title>/i);
 
-          let extracted = ogMatch ? ogMatch[1] : 
-                          (twitterMatch ? twitterMatch[1] : 
-                          (itemPropMatch ? itemPropMatch[1] : 
-                          (titleMatch ? titleMatch[1] : '')));
+          let extracted = ogMatch ? ogMatch[1] :
+            (twitterMatch ? twitterMatch[1] :
+              (itemPropMatch ? itemPropMatch[1] :
+                (titleMatch ? titleMatch[1] : '')));
 
           extracted = decodeHtmlEntities(extracted);
           extracted = extracted
@@ -104,7 +104,7 @@ function driveMetadataPlugin() {
           // Reject error titles
           const lower = extracted.toLowerCase();
           const isErrorTitle = [
-            'error 404', 'not found', '404', '403', 'access denied', 
+            'error 404', 'not found', '404', '403', 'access denied',
             'page not found', 'google drive', 'google docs', 'sign-in', 'sign in', 'login'
           ].some(errToken => lower === errToken || lower.startsWith(errToken));
 
@@ -114,6 +114,118 @@ function driveMetadataPlugin() {
 
           res.setHeader('Content-Type', 'application/json');
           res.end(JSON.stringify({ title: extracted, status: statusCode }));
+        } catch (e) {
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: e.message }));
+        }
+      });
+
+      // API 2: Fetch and detect all video episodes from a Google Drive folder URL
+      server.middlewares.use('/api/fetch-drive-folder', async (req, res) => {
+        const fullUrl = new URL(req.url, 'http://localhost:3000');
+        let targetUrl = fullUrl.searchParams.get('url');
+
+        if (!targetUrl) {
+          res.statusCode = 400;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ error: 'URL parameter required' }));
+          return;
+        }
+
+        try {
+          const folderMatch = targetUrl.match(/\/folders\/([a-zA-Z0-9_-]+)/) ||
+                              targetUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+          const folderId = folderMatch ? folderMatch[1] : null;
+
+          if (!folderId) {
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: false, error: 'Could not extract Google Drive Folder ID' }));
+            return;
+          }
+
+          // Try fetching both the standard folder URL and the embedded view
+          const folderWebUrl = `https://drive.google.com/drive/folders/${folderId}`;
+          const embedWebUrl = `https://drive.google.com/embeddedfolderview?id=${folderId}#list`;
+
+          const [folderRes, embedRes] = await Promise.all([
+            fetchWithRedirects(folderWebUrl),
+            fetchWithRedirects(embedWebUrl)
+          ]);
+
+          const combinedHtml = (folderRes.data || '') + '\n' + (embedRes.data || '');
+          const isRestricted = (folderRes.statusCode === 404 || folderRes.statusCode === 403) &&
+                               (embedRes.statusCode === 404 || embedRes.statusCode === 403);
+
+          const episodes = [];
+          const seenIds = new Set();
+
+          // Strategy 1: Look for JSON bootstrap array format: ["FILE_ID", ["FILENAME.ext", ...]]
+          const jsonRegex = /\["([a-zA-Z0-9_-]{25,})",\["([^"]+\.(?:mkv|mp4|webm|avi|mov|m4v))"/gi;
+          let match;
+          while ((match = jsonRegex.exec(combinedHtml)) !== null) {
+            const fileId = match[1];
+            const rawName = match[2];
+            if (!seenIds.has(fileId)) {
+              seenIds.add(fileId);
+              episodes.push({ fileId, fileName: decodeHtmlEntities(rawName) });
+            }
+          }
+
+          // Strategy 2: Look for data-id or href with video files
+          if (episodes.length === 0) {
+            const linkRegex = /href="https:\/\/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]{25,})\/[^"]*"[^>]*>([^<]+\.(?:mkv|mp4|webm|avi|mov))<\/a>/gi;
+            while ((match = linkRegex.exec(combinedHtml)) !== null) {
+              const fileId = match[1];
+              const rawName = match[2];
+              if (!seenIds.has(fileId)) {
+                seenIds.add(fileId);
+                episodes.push({ fileId, fileName: decodeHtmlEntities(rawName) });
+              }
+            }
+          }
+
+          if (episodes.length > 0) {
+            // Natural sort episodes by episode number
+            episodes.sort((a, b) => {
+              const numA = (a.fileName.match(/(?:s\d+e|ep(?:isode)?\.?\s*|\bep\s*|\be)(\d+)/i) || a.fileName.match(/^(\d+)[\s.:-]/) || [, 999])[1];
+              const numB = (b.fileName.match(/(?:s\d+e|ep(?:isode)?\.?\s*|\bep\s*|\be)(\d+)/i) || b.fileName.match(/^(\d+)[\s.:-]/) || [, 999])[1];
+              return parseInt(numA, 10) - parseInt(numB, 10);
+            });
+
+            const formattedEpisodes = episodes.map((item, idx) => {
+              const epMatch = item.fileName.match(/(?:s\d+e|ep(?:isode)?\.?\s*|\bep\s*|\be)(\d+)/i) ||
+                              item.fileName.match(/^(\d+)[\s.:-]/);
+              const epNum = epMatch ? parseInt(epMatch[1], 10) : (idx + 1);
+              const cleanTitle = item.fileName.replace(/\.(mkv|mp4|webm|avi|mov|m4v)$/i, '').trim();
+              return {
+                epNum,
+                title: cleanTitle,
+                fileName: item.fileName,
+                fileId: item.fileId,
+                link: `https://drive.google.com/file/d/${item.fileId}/view`
+              };
+            });
+
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({
+              success: true,
+              folderId,
+              count: formattedEpisodes.length,
+              episodes: formattedEpisodes
+            }));
+            return;
+          }
+
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({
+            success: false,
+            isRestricted,
+            folderId,
+            message: isRestricted
+              ? "Google Drive folder is set to 'Restricted'. Please change sharing to 'Anyone with the link can view' to auto-detect all episodes."
+              : "No video files found in Google Drive folder."
+          }));
         } catch (e) {
           res.statusCode = 500;
           res.setHeader('Content-Type', 'application/json');

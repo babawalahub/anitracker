@@ -10,7 +10,8 @@ import {
   formatEmbedUrl, 
   parseMultipleVideoEntries, 
   formatEpisodeTitle,
-  fetchDriveTitle
+  fetchDriveTitle,
+  fetchDriveFolderContents
 } from '../services/videoHelper';
 import CustomVideoPlayer from './CustomVideoPlayer';
 
@@ -41,6 +42,8 @@ export default function AnimeVideoPlayer({
   const [driveMainLink, setDriveMainLink] = useState(initialFolder || '');
   const [driveEpCount, setDriveEpCount] = useState(maxEpisodes || 12);
   const [driveFileListText, setDriveFileListText] = useState('');
+  const [isFetchingFolder, setIsFetchingFolder] = useState(false);
+  const [folderFetchResult, setFolderFetchResult] = useState(null);
 
   // Single Tab State
   const [singleTitleInput, setSingleTitleInput] = useState('');
@@ -95,6 +98,65 @@ export default function AnimeVideoPlayer({
     if (filterMode === 'watched') return isWatched;
     return true;
   });
+
+  // Handler: Auto-Detect and fetch all episodes from Google Drive folder
+  const handleAutoDetectFolder = async (folderLinkToDetect) => {
+    const link = folderLinkToDetect || driveMainLink;
+    if (!link) return;
+    setIsFetchingFolder(true);
+    setFolderFetchResult(null);
+
+    try {
+      const result = await fetchDriveFolderContents(link);
+      if (result && result.success && result.episodes && result.episodes.length > 0) {
+        setDriveEpCount(result.count);
+        setFolderFetchResult({
+          success: true,
+          count: result.count,
+          message: `Found ${result.count} episodes in Google Drive folder!`
+        });
+
+        // Auto-fill textarea with the extracted episodes!
+        const lines = result.episodes.map(ep => `${ep.title}: ${ep.link}`).join('\n');
+        setDriveFileListText(lines);
+      } else if (result && result.isRestricted) {
+        setFolderFetchResult({
+          success: false,
+          isRestricted: true,
+          folderId: result.folderId,
+          message: result.message
+        });
+      } else {
+        setFolderFetchResult({
+          success: false,
+          message: 'Could not auto-read files. The folder may be restricted or empty.'
+        });
+      }
+    } catch (err) {
+      console.warn("Folder detect error:", err);
+      setFolderFetchResult({
+        success: false,
+        message: 'Could not connect to Drive folder.'
+      });
+    } finally {
+      setIsFetchingFolder(false);
+    }
+  };
+
+  // Handler: Update episode count dynamically when user types or pastes lines in textarea
+  const handleFileListTextChange = (text) => {
+    setDriveFileListText(text);
+    if (text.trim()) {
+      const parsed = parseMultipleVideoEntries(text, 1);
+      const detectedCount = Math.max(
+        Object.keys(parsed.links).length,
+        Object.keys(parsed.titles).length
+      );
+      if (detectedCount > 0) {
+        setDriveEpCount(detectedCount);
+      }
+    }
+  };
 
   // Handler 1: Generate All Episodes from Google Drive Link & File List (Auto-fetches Drive titles)
   const handleGenerateFromDrive = async (e) => {
@@ -412,14 +474,31 @@ export default function AnimeVideoPlayer({
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="sm:col-span-2">
-                  <label className="block text-[11px] font-bold text-slate-400 mb-1">
-                    Google Drive Link (Folder or File Link)
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] font-bold text-slate-400">
+                      Google Drive Link (Folder or File Link)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => handleAutoDetectFolder()}
+                      disabled={isFetchingFolder || !driveMainLink}
+                      className="text-[10px] font-black px-2 py-0.5 rounded-md bg-sky-500/20 hover:bg-sky-500 hover:text-white text-sky-400 border border-sky-500/40 transition-all flex items-center gap-1 disabled:opacity-40"
+                    >
+                      {isFetchingFolder ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                      <span>Auto-Detect Episodes</span>
+                    </button>
+                  </div>
                   <input
                     type="text"
                     placeholder="https://drive.google.com/drive/folders/1ABCXYZ... or https://drive.google.com/file/d/..."
                     value={driveMainLink}
-                    onChange={(e) => setDriveMainLink(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setDriveMainLink(val);
+                      if (val.includes('/folders/') || val.includes('folderview')) {
+                        handleAutoDetectFolder(val);
+                      }
+                    }}
                     required
                     className="w-full bg-[#151f2e] border border-[#1e293b] rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
                   />
@@ -434,28 +513,81 @@ export default function AnimeVideoPlayer({
                     max="2000"
                     value={driveEpCount}
                     onChange={(e) => setDriveEpCount(e.target.value)}
-                    className="w-full bg-[#151f2e] border border-[#1e293b] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
+                    className="w-full bg-[#151f2e] border border-[#1e293b] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500 font-bold"
                   />
                 </div>
               </div>
+
+              {/* Folder Detection Result Banner */}
+              {folderFetchResult && (
+                <div className={`p-3 rounded-2xl border text-xs transition-all ${
+                  folderFetchResult.success 
+                    ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200' 
+                    : folderFetchResult.isRestricted
+                      ? 'bg-amber-950/40 border-amber-500/40 text-amber-200'
+                      : 'bg-rose-950/40 border-rose-500/40 text-rose-200'
+                }`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-1">
+                      <p className="font-extrabold flex items-center gap-1.5">
+                        {folderFetchResult.success ? (
+                          <>
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+                            <span>Found ${folderFetchResult.count} Episodes in Google Drive Folder!</span>
+                          </>
+                        ) : folderFetchResult.isRestricted ? (
+                          <>
+                            <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                            <span>Google Drive Folder Sharing is Set to Restricted</span>
+                          </>
+                        ) : (
+                          <>
+                            <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
+                            <span>${folderFetchResult.message}</span>
+                          </>
+                        )}
+                      </p>
+                      {folderFetchResult.isRestricted && (
+                        <p className="text-[11px] text-amber-300/90 leading-relaxed">
+                          To auto-detect all episode titles: In Google Drive, right-click the folder ➔ <strong>Share</strong> ➔ change from <em>Restricted</em> to <strong>"Anyone with the link can view"</strong>, then click <strong>Auto-Detect</strong> above.<br />
+                          <em>Or simply copy and paste the filenames/links into the box below.</em>
+                        </p>
+                      )}
+                    </div>
+                    {driveMainLink && (
+                      <a
+                        href={driveMainLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-bold text-[11px] flex items-center gap-1 flex-shrink-0"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        <span>Open Drive</span>
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-[11px] font-bold text-slate-400">
                     Paste File Names or Episode Links (Optional, e.g. from your Drive)
                   </label>
-                  <span className="text-[10px] text-slate-500">One per line</span>
+                  <span className="text-[10px] text-sky-400 font-bold">
+                    {driveEpCount ? `${driveEpCount} Episodes Detected` : 'One per line'}
+                  </span>
                 </div>
                 <textarea
                   rows={4}
                   placeholder={
-                    "Example with links:\n" +
-                    `${seriesName} - S01E01.mkv: https://drive.google.com/file/d/1ABC.../view\n` +
-                    `${seriesName} - S01E02.mkv: https://drive.google.com/file/d/2XYZ.../view\n` +
-                    "(Or just paste filenames like S01E01.mkv to auto-name all episodes)"
+                    "Example with links or file names:\n" +
+                    `${seriesName} - S01E01.mkv\n` +
+                    `${seriesName} - S01E02.mkv\n` +
+                    "(Paste your filenames or links to auto-name all episodes and set count)"
                   }
                   value={driveFileListText}
-                  onChange={(e) => setDriveFileListText(e.target.value)}
+                  onChange={(e) => handleFileListTextChange(e.target.value)}
                   className="w-full bg-[#151f2e] border border-[#1e293b] rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
                 />
               </div>

@@ -216,3 +216,23 @@ export function parseMultipleEpisodeLinks(text, startingEp = 1) {
   const { links } = parseMultipleVideoEntries(text, startingEp);
   return links;
 }
+
+// Fetch all episodes and count from a Google Drive folder via server proxy
+export async function fetchDriveFolderContents(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return null;
+  const url = cleanUrl(rawUrl);
+  if (!url || (!url.includes('drive.google.com') && !url.includes('docs.google.com'))) {
+    return null;
+  }
+
+  try {
+    const res = await fetch(`/api/fetch-drive-folder?url=${encodeURIComponent(url)}`);
+    if (res.ok) {
+      const data = await res.json();
+      return data;
+    }
+  } catch (err) {
+    console.warn("fetchDriveFolderContents error:", err);
+  }
+  return null;
+}
