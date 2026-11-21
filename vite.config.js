@@ -232,6 +232,56 @@ function driveMetadataPlugin() {
           res.end(JSON.stringify({ error: e.message }));
         }
       });
+
+      // API 3: Direct Video Stream Proxy for Google Drive (Bypasses iframes, ads, and doubleclick errors)
+      server.middlewares.use('/api/stream-drive-video', (req, res) => {
+        const fullUrl = new URL(req.url, 'http://localhost:3000');
+        const fileId = fullUrl.searchParams.get('fileId');
+
+        if (!fileId) {
+          res.statusCode = 400;
+          res.end('fileId required');
+          return;
+        }
+
+        const driveStreamUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`;
+        const headers = {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        };
+
+        if (req.headers.range) {
+          headers.range = req.headers.range;
+        }
+
+        https.get(driveStreamUrl, { headers }, (driveRes) => {
+          // If Google redirects with 302/303, follow redirect
+          if (driveRes.statusCode >= 300 && driveRes.statusCode < 400 && driveRes.headers.location) {
+            https.get(driveRes.headers.location, { headers }, (redirectRes) => {
+              const forwardHeaders = {
+                'Content-Type': 'video/mp4',
+                'Accept-Ranges': 'bytes'
+              };
+              if (redirectRes.headers['content-length']) forwardHeaders['Content-Length'] = redirectRes.headers['content-length'];
+              if (redirectRes.headers['content-range']) forwardHeaders['Content-Range'] = redirectRes.headers['content-range'];
+              res.writeHead(redirectRes.statusCode, forwardHeaders);
+              redirectRes.pipe(res);
+            }).on('error', () => { res.statusCode = 502; res.end('Proxy error'); });
+            return;
+          }
+
+          const forwardHeaders = {
+            'Content-Type': 'video/mp4',
+            'Accept-Ranges': 'bytes'
+          };
+          if (driveRes.headers['content-length']) forwardHeaders['Content-Length'] = driveRes.headers['content-length'];
+          if (driveRes.headers['content-range']) forwardHeaders['Content-Range'] = driveRes.headers['content-range'];
+          res.writeHead(driveRes.statusCode, forwardHeaders);
+          driveRes.pipe(res);
+        }).on('error', (err) => {
+          res.statusCode = 500;
+          res.end(err.message);
+        });
+      });
     }
   };
 }

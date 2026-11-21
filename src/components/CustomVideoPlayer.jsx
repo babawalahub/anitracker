@@ -45,6 +45,7 @@ export default function CustomVideoPlayer({
   const [showQuickInput, setShowQuickInput] = useState(false);
   const [isSavingQuickLink, setIsSavingQuickLink] = useState(false);
   const [streamSource, setStreamSource] = useState('auto'); // 'auto' | 'online' | 'drive_folder'
+  const [drivePlayerMode, setDrivePlayerMode] = useState('stream'); // 'stream' (Direct HTML5 Stream) | 'embed' (Drive Iframe)
   const [localFileBlobUrl, setLocalFileBlobUrl] = useState(null);
   const [localFileName, setLocalFileName] = useState('');
   const fileInputRef = useRef(null);
@@ -384,8 +385,8 @@ export default function CustomVideoPlayer({
     cyan: 'text-sky-300 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]'
   }[subColor];
 
-  const isDirectVideo = embedInfo?.type === 'video';
   const isGoogleDriveFile = embedInfo?.type === 'drive_file' && !localFileBlobUrl;
+  const isDirectVideo = embedInfo?.type === 'video' || (isGoogleDriveFile && drivePlayerMode === 'stream') || Boolean(localFileBlobUrl);
   const driveFolderId = embedInfo?.folderId || 
     (googleDriveFolderUrl ? (googleDriveFolderUrl.match(/\/folders\/([a-zA-Z0-9_-]+)/)?.[1] || googleDriveFolderUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/)?.[1]) : null);
 
@@ -476,8 +477,44 @@ export default function CustomVideoPlayer({
             <span>Playing Local File: {localFileName}</span>
           </div>
         </>
+      ) : isGoogleDriveFile && drivePlayerMode === 'stream' ? (
+        /* ── CASE 3A: GOOGLE DRIVE DIRECT PRO STREAM (Zero Ads • No DoubleClick • Dual Audio & Subs) ── */
+        <>
+          <video
+            ref={videoRef}
+            src={`/api/stream-drive-video?fileId=${embedInfo.fileId}`}
+            poster={poster}
+            playsInline
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
+            onTimeUpdate={handleVideoTimeUpdate}
+            onLoadedMetadata={() => setDuration(videoRef.current?.duration || 0)}
+            onEnded={onEnded}
+            onClick={togglePlay}
+            onError={() => {
+              console.warn("Direct stream failed, falling back to Drive embed player");
+              setDrivePlayerMode('embed');
+            }}
+            className="w-full h-full object-contain cursor-pointer"
+          />
+
+          {!isPlaying && (
+            <button
+              onClick={togglePlay}
+              className="absolute z-10 w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-sky-500/90 text-white flex items-center justify-center shadow-2xl backdrop-blur transition-all hover:scale-110 hover:bg-sky-400 group-hover:flex"
+            >
+              <Play className="w-8 h-8 sm:w-10 sm:h-10 fill-white ml-1" />
+            </button>
+          )}
+
+          {/* Toast info */}
+          <div className="absolute top-14 left-4 z-20 px-3 py-1 rounded-xl bg-sky-500/90 text-white text-[11px] font-bold backdrop-blur shadow-lg flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Pro Stream (Zero Ads • Dual Audio & Subs)</span>
+          </div>
+        </>
       ) : isGoogleDriveFile ? (
-        /* ── CASE 3: GOOGLE DRIVE SINGLE FILE LINK (Direct File Plays in Drive Player Online) ── */
+        /* ── CASE 3B: GOOGLE DRIVE EMBED (Official Cloud Player) ── */
         <div className="relative w-full h-full bg-black">
           <iframe
             src={embedInfo.embedUrl}
@@ -724,6 +761,26 @@ export default function CustomVideoPlayer({
             <LinkIcon className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Set Link</span>
           </button>
+
+          {/* Google Drive Pro Stream vs Embed Toggle */}
+          {isGoogleDriveFile && (
+            <button
+              type="button"
+              onClick={() => {
+                const nextMode = drivePlayerMode === 'stream' ? 'embed' : 'stream';
+                setDrivePlayerMode(nextMode);
+              }}
+              className={`flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold backdrop-blur border transition-all ${
+                drivePlayerMode === 'stream' 
+                  ? 'bg-gradient-to-r from-sky-500 to-indigo-600 text-white border-sky-400 shadow' 
+                  : 'bg-black/60 text-slate-200 border-white/20 hover:bg-black'
+              }`}
+              title={drivePlayerMode === 'stream' ? 'Switch to Google Drive Embed Player' : 'Switch to Direct Pro Player Stream'}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-sky-300" />
+              <span className="hidden sm:inline">{drivePlayerMode === 'stream' ? 'Pro Stream' : 'Drive Embed'}</span>
+            </button>
+          )}
 
           {/* External Link Button */}
           {(src || googleDriveFolderUrl) && (
