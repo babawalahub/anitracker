@@ -119,7 +119,21 @@ export default function AnimeVideoPlayer({
         // Auto-fill textarea with the extracted episodes!
         const lines = result.episodes.map(ep => `${ep.title}: ${ep.link}`).join('\n');
         setDriveFileListText(lines);
-      } else if (result && (result.isRestricted || result.message)) {
+
+        // Instantly populate videoLinks & videoTitles and save!
+        const autoLinks = { ...videoLinks };
+        const autoTitles = { ...videoTitles };
+        result.episodes.forEach(ep => {
+          autoLinks[ep.epNum] = ep.link;
+          autoTitles[ep.epNum] = ep.title;
+        });
+
+        setVideoLinks(autoLinks);
+        setVideoTitles(autoTitles);
+        const folderUrl = cleanUrl(link);
+        if (folderUrl) setGoogleDriveFolderUrl(folderUrl);
+        onSaveLinks(autoLinks, autoLinks[1] || '', autoTitles, folderUrl || googleDriveFolderUrl);
+      } else if (result && result.isRestricted) {
         setFolderFetchResult({
           success: false,
           isRestricted: true,
@@ -129,8 +143,8 @@ export default function AnimeVideoPlayer({
       } else {
         setFolderFetchResult({
           success: false,
-          isRestricted: true,
-          message: 'Could not auto-read files. The folder is likely restricted or requires login.'
+          isRestricted: false,
+          message: result?.message || 'Could not find video files in this folder. Make sure the folder contains video files.'
         });
       }
     } catch (err) {
@@ -163,10 +177,32 @@ export default function AnimeVideoPlayer({
   const handleGenerateFromDrive = async (e) => {
     e.preventDefault();
     const cleanedLink = cleanUrl(driveMainLink);
-    const targetCount = parseInt(driveEpCount, 10) || totalEpCount || 12;
+    let targetCount = parseInt(driveEpCount, 10) || totalEpCount || 12;
 
     const newLinks = { ...videoLinks };
     const newTitles = { ...videoTitles };
+
+    // If cleanedLink is a folder link and textarea is empty, attempt quick folder fetch
+    if (cleanedLink && (cleanedLink.includes('/folders/') || cleanedLink.includes('folderview')) && !driveFileListText.trim()) {
+      try {
+        setIsFetchingFolder(true);
+        const result = await fetchDriveFolderContents(cleanedLink);
+        if (result && result.success && result.episodes && result.episodes.length > 0) {
+          targetCount = result.count;
+          setDriveEpCount(result.count);
+          result.episodes.forEach(ep => {
+            newLinks[ep.epNum] = ep.link;
+            newTitles[ep.epNum] = ep.title;
+          });
+          const lines = result.episodes.map(ep => `${ep.title}: ${ep.link}`).join('\n');
+          setDriveFileListText(lines);
+        }
+      } catch (err) {
+        console.warn("Folder generate error:", err);
+      } finally {
+        setIsFetchingFolder(false);
+      }
+    }
 
     // Check if filenames or links were pasted in the textarea
     if (driveFileListText.trim()) {
@@ -232,6 +268,12 @@ export default function AnimeVideoPlayer({
   const handleSaveSingle = async (e) => {
     e.preventDefault();
     const cleaned = cleanUrl(singleLinkInput);
+
+    if (cleaned && (cleaned.includes('/folders/') || cleaned.includes('folderview'))) {
+      handleAutoDetectFolder(cleaned);
+      setShowLinkEditor(false);
+      return;
+    }
 
     const updatedLinks = { ...videoLinks };
     const updatedTitles = { ...videoTitles };
@@ -311,6 +353,12 @@ export default function AnimeVideoPlayer({
   const handleSaveEpisodeLink = async (epNum, linkUrl) => {
     const cleaned = cleanUrl(linkUrl);
     if (!cleaned) return;
+
+    if (cleaned.includes('/folders/') || cleaned.includes('folderview')) {
+      await handleAutoDetectFolder(cleaned);
+      return;
+    }
+
     const updatedLinks = { ...videoLinks, [epNum]: cleaned };
     const updatedTitles = { ...videoTitles };
 

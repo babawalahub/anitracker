@@ -160,24 +160,71 @@ function driveMetadataPlugin() {
           const episodes = [];
           const seenIds = new Set();
 
-          // Strategy 1: Look for JSON bootstrap array format: ["FILE_ID", ["FILENAME.ext", ...]]
-          const jsonRegex = /\["([a-zA-Z0-9_-]{25,})",\["([^"]+\.(?:mkv|mp4|webm|avi|mov|m4v))"/gi;
-          let match;
-          while ((match = jsonRegex.exec(combinedHtml)) !== null) {
-            const fileId = match[1];
-            const rawName = match[2];
-            if (!seenIds.has(fileId)) {
-              seenIds.add(fileId);
-              episodes.push({ fileId, fileName: decodeHtmlEntities(rawName) });
+          // Strategy 1: Parse window['_DRIVE_ivd'] hex-encoded bootstrap JSON
+          const ivdMatch = combinedHtml.match(/window\['_DRIVE_ivd'\]\s*=\s*'([^']+)'/);
+          if (ivdMatch) {
+            const unescaped = ivdMatch[1].replace(/\\x([0-9a-fA-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+            // Pattern: ["FILE_ID",["FOLDER_ID"],"FILENAME.ext" or ["FILE_ID", ... "FILENAME.ext"
+            const ivdRegex = /\["([a-zA-Z0-9_-]{25,})",\s*\[[^\]]*\],?\s*"([^"]+\.(?:mkv|mp4|webm|avi|mov|m4v))"/gi;
+            let m;
+            while ((m = ivdRegex.exec(unescaped)) !== null) {
+              const fileId = m[1];
+              const rawName = m[2];
+              if (!seenIds.has(fileId)) {
+                seenIds.add(fileId);
+                episodes.push({ fileId, fileName: decodeHtmlEntities(rawName) });
+              }
+            }
+
+            // Also check relaxed pattern in unescaped IVD
+            if (episodes.length === 0) {
+              const relaxedIvd = /"([a-zA-Z0-9_-]{25,})",\s*\[[^\]]*\],?\s*"([^"]+\.(?:mkv|mp4|webm|avi|mov|m4v))"/gi;
+              while ((m = relaxedIvd.exec(unescaped)) !== null) {
+                const fileId = m[1];
+                const rawName = m[2];
+                if (!seenIds.has(fileId)) {
+                  seenIds.add(fileId);
+                  episodes.push({ fileId, fileName: decodeHtmlEntities(rawName) });
+                }
+              }
             }
           }
 
-          // Strategy 2: Look for data-id or href with video files
+          // Strategy 2: Look for data-id with data-tooltip or aria-label containing video file extension
+          if (episodes.length === 0) {
+            const dataIdRegex = /data-id="([a-zA-Z0-9_-]{25,})"[^>]*?(?:data-tooltip|aria-label)="([^"]+\.(?:mkv|mp4|webm|avi|mov|m4v))/gi;
+            let m;
+            while ((m = dataIdRegex.exec(combinedHtml)) !== null) {
+              const fileId = m[1];
+              const rawName = m[2];
+              if (!seenIds.has(fileId)) {
+                seenIds.add(fileId);
+                episodes.push({ fileId, fileName: decodeHtmlEntities(rawName) });
+              }
+            }
+          }
+
+          // Strategy 3: Standard unescaped bootstrap array format: ["FILE_ID", ... "FILENAME.ext"]
+          if (episodes.length === 0) {
+            const jsonRegex = /\["([a-zA-Z0-9_-]{25,})",\["([^"]+\.(?:mkv|mp4|webm|avi|mov|m4v))"/gi;
+            let m;
+            while ((m = jsonRegex.exec(combinedHtml)) !== null) {
+              const fileId = m[1];
+              const rawName = m[2];
+              if (!seenIds.has(fileId)) {
+                seenIds.add(fileId);
+                episodes.push({ fileId, fileName: decodeHtmlEntities(rawName) });
+              }
+            }
+          }
+
+          // Strategy 4: Look for href links to drive files
           if (episodes.length === 0) {
             const linkRegex = /href="https:\/\/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]{25,})\/[^"]*"[^>]*>([^<]+\.(?:mkv|mp4|webm|avi|mov))<\/a>/gi;
-            while ((match = linkRegex.exec(combinedHtml)) !== null) {
-              const fileId = match[1];
-              const rawName = match[2];
+            let m;
+            while ((m = linkRegex.exec(combinedHtml)) !== null) {
+              const fileId = m[1];
+              const rawName = m[2];
               if (!seenIds.has(fileId)) {
                 seenIds.add(fileId);
                 episodes.push({ fileId, fileName: decodeHtmlEntities(rawName) });
